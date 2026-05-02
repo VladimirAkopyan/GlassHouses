@@ -116,6 +116,64 @@ Existing local documents; no source URL was found in the extracted due diligence
 - [Housemetric Flat 32 Farnsworth Court page](<Property Market Evidence/Housemetric_Flat_32_Farnsworth_Court_West_Parkside.html>) - Source: <https://housemetric.co.uk/19164602/SE10-0QG/Flat%2B32%2BFarnsworth%2BCourt%2BWest%2BParkside>
 - [OpenRent 1-bed flat Farnsworth Court page](<Property Market Evidence/OpenRent_1-bed_Farnsworth_Court_SE10.html>) - Source: <https://www.openrent.co.uk/property-to-rent/london/1-bed-flat-farnsworth-court-se10/2543474>
 
+<!-- CLAUDE_ARCHIVE_START -->
+## Claude newData Archive
+
+The `newData` folder created with Claude has been copied into the existing `Findings-gmv` theme structure. Original files remain in `newData` as the source snapshot. The local Claude PDFs are generated research-note PDFs, not replacements for the full source PDFs already filed above.
+
+Master index: [HTML](<Research Archive/Claude Archive/18_master_index.html>) | [PDF](<Research Archive/Claude Archive/18_master_index.pdf>)
+
+The master index says the Claude archive covered 28 URLs from `Farnsworth_Court_due-diligence_report.pdf`, `Greenwich_Millennium_Village_legal_and_dispute_map.pdf`, and `register.md`. It records successful full-text captures for many sources, search-based captures for some articles, and blocked/permission-limited fetches for sources including `docs.planning.org.uk`, ULI, Parliament, Royal Greenwich committee pages, and some GLA/Vistry/Building pages.
+
+### Claude Legal and Disputes
+
+- 01. Holly Court RRO decision summary: [HTML](<Legal and Disputes/Claude Archive/01_holly_court_rro_decision.html>) | [PDF](<Legal and Disputes/Claude Archive/01_holly_court_rro_decision.pdf>) - Master-index status: full text. Source: <https://assets.publishing.service.gov.uk/media/5d2ef1fced915d2fefd0bd85/706_Holly_Court_-_RRO_Decision.pdf>
+- 02. GMV Ltd v Essex Services Group case summary: [HTML](<Legal and Disputes/Claude Archive/02_keating_chambers_GMV_v_Essex.html>) | [PDF](<Legal and Disputes/Claude Archive/02_keating_chambers_GMV_v_Essex.pdf>) - Master-index status: full text. Source: <https://www.keatingchambers.com/resources/cases/greenwich-millennium-village-v-essex-services-group-and-others>
+- 03. Inner Temple BAILII April 2014 listing: [HTML](<Legal and Disputes/Claude Archive/03_inner_temple_BAILII_2014.html>) | [PDF](<Legal and Disputes/Claude Archive/03_inner_temple_BAILII_2014.pdf>) - Master-index status: full text. Source: <https://www.innertemplelibrary.com/2014/04/bailii-recent-decisions-1337/>
+- 12. Inside Housing Moat service-charge disputes: [HTML](<Legal and Disputes/Claude Archive/12_inside_housing_moat_charges.html>) | [PDF](<Legal and Disputes/Claude Archive/12_inside_housing_moat_charges.pdf>) - Master-index status: via search. Source: <https://www.insidehousing.co.uk/news/tenants-prepare-to-fight-crippling-service-charges-10675>
+- 13. Building Magazine acoustics/noise complaints: [HTML](<Legal and Disputes/Claude Archive/13_building_magazine_acoustics.html>) | [PDF](<Legal and Disputes/Claude Archive/13_building_magazine_acoustics_2005.pdf>) - Master-index status: permissions blocked; reconstructed note. Source: <https://www.building.co.uk/news/if-our-neighbours-have-people-around-for-a-dinner-party-we-go-out/3050662.article>
+- Visual summary: [GMV disputes timeline](<Legal and Disputes/Claude Archive Images/01_GMV_disputes_timeline.png>) - Timeline graphic summarising legal, service-charge, construction-quality, and remediation disputes.
+
+### Claude Planning
+
+- 05. GLA Mayoral Decision MD2574 professional fees: [HTML](<Planning/Claude Archive/05_GLA_MD2574_professional_fees.html>) | [PDF](<Planning/Claude Archive/05_GLA_MD2574_professional_fees.pdf>) - Master-index status: full text. Source: <https://www.london.gov.uk/decisions/md2574-greenwich-peninsula-professional-fees>
+- 06. GLA Phases 3, 4 and 5 Stage II report: [HTML](<Planning/Claude Archive/06_GLA_phases_3_4_5_report_2012.html>) | [PDF](<Planning/Claude Archive/06_GLA_phases_3_4_5_report_2012.pdf>) - Master-index status: via search after permissions issue. Source: <https://www.london.gov.uk/sites/default/files/public%3A//public%3A//PAWS/media_id_22074///greenwich_millenium_village_phases_3_4_%26_5_report.pdf>
+- 07. GMV February 2017 public exhibition: [HTML](<Planning/Claude Archive/07_GMV_2017_public_exhibition.html>) | [PDF](<Planning/Claude Archive/07_GMV_2017_public_exhibition.pdf>) - Master-index status: full text. Source: <https://www.greenwichmillenniumvillage.co.uk/files/COnsultation/7th-9th-february-2017.pdf>
+- 08. RBG planning decision 24/3879/F, Phases 1 and 2 cladding: [HTML](<Planning/Claude Archive/08_RBG_planning_24-3879-F.html>) | [PDF](<Planning/Claude Archive/08_RBG_planning_24-3879-F_cladding.pdf>) - Master-index status: Royal Greenwich page/PDF blocked; reconstructed via search. Source: <https://committees.royalgreenwich.gov.uk/ieDecisionDetails.aspx?ID=859>
+- 09. Farnsworth and Becquerel Court cladding application 24/3776/F note: [HTML](<Planning/Claude Archive/09_farnsworth_24-3776-F_note.html>) | [PDF](<Planning/Claude Archive/09_farnsworth_24-3776-F_note.pdf>) - Master-index status: `docs.planning.org.uk` PDFs blocked; note reconstructed from known planning references. Source: <https://planning.royalgreenwich.gov.uk/online-applications/>
+
+### Claude Corporate and Governance
+
+- 04. GMV Management Ltd and Peartree Village Management Ltd Companies House summary: [HTML](<Corporate/Claude Archive/04_GMV_management_companies_house.html>) | [PDF](<Corporate/Claude Archive/04_GMV_management_companies_house.pdf>) - Master-index status: full text. Sources include Companies House company `03959700` and `08704070`.
+- 14. Vistry Group annual report 2024 GMV extract: [HTML](<Corporate/Claude Archive/14_vistry_annual_report_GMV.html>) | [PDF](<Corporate/Claude Archive/14_vistry_annual_report_2024_GMV.pdf>) - Master-index status: permissions issue; extract captured via search. Source: <https://www.vistrygroup.co.uk/~/media/Files/V/vistry-group-v1/results-and-presentations/2025/ara-2024-25-all-spreads-v1.pdf>
+- Visual summary: [GMV governance entity map](<Corporate/Claude Archive Images/02_GMV_governance_entity_map.png>) - Relationship map of freeholder, management, developer, and related entities.
+- Visual summary: [RTM formation network](<Corporate/Claude Archive Images/04_RTM_formation_network.png>) - Network graphic for right-to-manage company formation and leaseholder governance links.
+
+### Claude Development and Utilities
+
+- 10. Ingenia Homes for the New Millennium: [HTML](<Development Background/Claude Archive/10_ingenia_homes_new_millennium.html>) | [PDF](<Development Background/Claude Archive/10_ingenia_homes_new_millennium.pdf>) - Master-index status: via search. Source: <https://www.ingenia.org.uk/articles/homes-for-the-new-millennium-new-technology-and-innovation-at-greenwich-millennium-village/>
+- 11. Switch2 GMV 30-year heat network contract: [HTML](<Utilities - Heat Network/Claude Archive/11_switch2_heat_network.html>) | [PDF](<Utilities - Heat Network/Claude Archive/11_switch2_GMV_heat_network.pdf>) - Master-index status: full text. Source: <https://switch2.co.uk/greenwich-millennium-village-awards-30-year-heat-network-contract-to-switch2-energy/>
+
+### Claude Property Market Evidence
+
+- 15. Farnsworth Court property listings and letting particulars: [HTML](<Property Market Evidence/Claude Archive/15_farnsworth_property_listings.html>) | [PDF](<Property Market Evidence/Claude Archive/15_farnsworth_property_listings.pdf>) - Master-index status: full text from OnTheMarket and OpenRent sources.
+- 16. HouseMetric Flat 32 Farnsworth Court EPC and sale history: [HTML](<Property Market Evidence/Claude Archive/16_housemetric_EPC_data.html>) | [PDF](<Property Market Evidence/Claude Archive/16_housemetric_EPC_data.pdf>) - Master-index status: full text. Source: <https://housemetric.co.uk/19164602/SE10-0QG/Flat%2B32%2BFarnsworth%2BCourt%2BWest%2BParkside>
+- Visual summary: [HomeViews ratings](<Property Market Evidence/Claude Archive Images/05_homeviews_ratings.png>) - Ratings graphic summarising resident-review evidence.
+
+### Claude Research and Indexes
+
+- 17. Supplementary new findings: [HTML](<Research Archive/Claude Archive/17_supplementary_new_findings.html>) | [PDF](<Research Archive/Claude Archive/17_supplementary_new_findings.pdf>) - New-findings research note covering RTM companies, GMVRA, reviews, and additional leads. Source noted by Claude: <https://gmvra.org/>
+- Visual summary: [sources overview table](<Research Archive/Claude Archive Images/03_sources_overview_table.png>) - Overview graphic summarising the source archive and fetch status.
+
+### Claude Master-Index Failure Notes
+
+- `docs.planning.org.uk` planning PDFs for `24/3776/F` were recorded as `403`; the relevant local Claude note is [09_farnsworth_24-3776-F_note.html](<Planning/Claude Archive/09_farnsworth_24-3776-F_note.html>).
+- ULI case study `C036003.pdf` was recorded as `403`; the existing local capture remains [ULI_Greenwich_Millennium_Village_Case_Study.md](<Development Background/ULI_Greenwich_Millennium_Village_Case_Study.md>).
+- Parliament written evidence URL `106231` was recorded as `403`; the existing local capture remains [Parliament_Written_Evidence_106231.md](<Legal and Disputes/Parliament_Written_Evidence_106231.md>).
+- Royal Greenwich planning application documents page for acoustic application `_GRNW_DCAPR_96641` was recorded as blocked by `robots.txt`; the downloaded acoustic application documents remain indexed under [Acoustics](#acoustics).
+
+<!-- CLAUDE_ARCHIVE_END -->
+
 <!-- IMAGE_ASSETS_START -->
 ## Image Assets
 
