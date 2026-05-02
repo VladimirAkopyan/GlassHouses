@@ -1,0 +1,8 @@
+langchain-core>=0.3.0
+langchain-anthropic>=0.3.0
+langgraph>=0.2.0
+pydantic>=2.8.2
+pymongo>=4.8.0
+pytest>=8.3.2
+mongomock>=4.1.2
+
