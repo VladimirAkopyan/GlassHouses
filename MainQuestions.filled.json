@@ -1,0 +1,58 @@
+{
+  "developmentName": "Farnsworth Court / Greenwich Millennium Village Phases 1 and 2",
+  "features": {
+    "ventilation": "Unknown",
+    "cooling": "Unknown",
+    "parking": "Indoor Unheated",
+    "communalHeating": true,
+    "gasSupply": true,
+    "electricSupplyAmperage": null,
+    "broadbandType": "Unknown",
+    "liftsPerTower": 1,
+    "liftSizeOrCargoElevator": "Unknown; no cargo/service elevator evidence found. Fire statement says evacuation lifts were not considered viable as part of remedial works.",
+    "roofTerrace": null,
+    "barbeque": null,
+    "cycleParking": "In the Building",
+    "cycleParkingSecurity": null,
+    "concierge": true
+  },
+  "facilities": {
+    "gym": null,
+    "sauna": null,
+    "swimmingPool": {
+      "available": null,
+      "location": null,
+      "heated": null
+    },
+    "sunbeds": null
+  },
+  "issues": {
+    "mould": null,
+    "condensation": null,
+    "leakingPipes": true,
+    "leakingRoof": null,
+    "blockedPipe": null
+  },
+  "incidents": [
+    {
+      "date": "2007-07-09",
+      "type": "Broken Elevator",
+      "description": "Inside Housing reported Holly Court lift problems: a resident said she had to carry her seven-year-old daughter with cerebral palsy to a fourth-floor flat because of problems with the lift. This is GMV/Holly Court evidence, not Farnsworth-specific."
+    },
+    {
+      "date": "2013-07-01",
+      "type": "Leaking Roof",
+      "description": "Not a roof leak: included as nearest available schema category for a GMV catastrophic flooding/water-system defect litigated in 2013. The source describes cold-water-system failures causing ?4.75m damage. Treat as water-services/flooding evidence, not roof evidence."
+    },
+    {
+      "date": "2020-01-20",
+      "type": "Fire",
+      "description": "Fire-safety/remediation trigger rather than an actual fire incident: after Government EWS guidance, GMVML commissioned intrusive surveys and all 10 high-rise buildings were deemed to require EWS remediation, including replacement of cladding and installation of suitable fire breaks where missing or inadequate."
+    },
+    {
+      "date": "2022-08-01",
+      "type": "Broken Communal Heating",
+      "description": "Not a dated outage: Switch2 reported the existing heat network serving phases 1 and 2 was outdated and difficult to maintain, and announced a 30-year retrofit/operation/maintenance partnership intended to upgrade equipment while maintaining heat and hot water supply."
+    }
+  ]
+}

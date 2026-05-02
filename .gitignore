@@ -1,1 +1,5 @@
 APiKeys.json
+.env
+**/.env
+**/bin/
+**/obj/

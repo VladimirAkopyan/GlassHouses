@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GMV Evidence Agent</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="content">
+      <header class="hero">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Greenwich_Millennium_Village_-_Renaissance_Walk.jpg/1280px-Greenwich_Millennium_Village_-_Renaissance_Walk.jpg" alt="Buildings on Renaissance Walk in Greenwich Millennium Village">
+        <div class="heroText">
+          <p class="kicker">Residential due diligence assistant</p>
+          <h1>Greenwich Millennium Village Evidence Agent</h1>
+          <p>
+            Ask questions against the GMV document archive: planning reports, property particulars,
+            Companies House extracts, tribunal notes, acoustic reports, heat-network records, and
+            other source material already embedded in MongoDB.
+          </p>
+        </div>
+      </header>
+
+      <section class="summary">
+        <div>
+          <h2>Development Summary</h2>
+          <p>
+            Greenwich Millennium Village is a mixed-tenure modern development on the Greenwich Peninsula,
+            planned as an urban village and part of the Millennium Communities Programme. The archive
+            evidence points to an ambitious early-2000s sustainability brief, community heat network,
+            landscaped courtyards, strong transport links, and a long record of later due-diligence issues
+            around external-wall remediation, service charges, acoustic complaints, and infrastructure ageing.
+          </p>
+        </div>
+        <dl>
+          <div><dt>Archive chunks</dt><dd id="docCount">Checking...</dd></div>
+          <div><dt>Retrieval</dt><dd id="retrievalMode">Checking...</dd></div>
+          <div><dt>LLM</dt><dd id="llmStatus">Checking...</dd></div>
+        </dl>
+      </section>
+
+      <section class="gallery" aria-label="GMV image gallery">
+        <article>
+          <img src="https://s0.geograph.org.uk/geophotos/02/60/02/2600206_8ad276c9.jpg" alt="Renaissance Walk, North Greenwich">
+          <div>
+            <h2>Renaissance Walk</h2>
+            <p>Part of Greenwich Millennium Village, overlooking landscaped water features.</p>
+          </div>
+        </article>
+        <article>
+          <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Greenwich_Millennium_Village_-_Renaissance_Walk.jpg/640px-Greenwich_Millennium_Village_-_Renaissance_Walk.jpg" alt="GMV buildings and balconies beside water">
+          <div>
+            <h2>Waterside Blocks</h2>
+            <p>Distinctive coloured balconies and curved roof forms in the original GMV fabric.</p>
+          </div>
+        </article>
+        <article>
+          <img src="/assets/archive-overview.png" alt="Archive source overview graphic">
+          <div>
+            <h2>Evidence Map</h2>
+            <p>Source archive organised around planning, legal disputes, property evidence, and corporate records.</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="notes">
+        <h2>How Answers Are Produced</h2>
+        <p>
+          The backend retrieves relevant chunks from MongoDB. If a Voyage API key is configured it uses Atlas
+          Vector Search over the existing 1024-dimensional embeddings; otherwise it falls back to Mongo text
+          search. Claude then writes the answer using only the retrieved passages and cites source ids.
+        </p>
+      </section>
+    </section>
+
+    <aside class="chat" aria-label="Question panel">
+      <div class="chatHeader">
+        <div>
+          <p class="kicker">Ask the archive</p>
+          <h2>GMV Chat</h2>
+        </div>
+        <span id="healthDot" class="dot"></span>
+      </div>
+      <div id="messages" class="messages">
+        <div class="message assistant">
+          <p>Try: “Does Farnsworth Court have communal heating?” or “What fire safety issues are documented?”</p>
+        </div>
+      </div>
+      <form id="chatForm" class="composer">
+        <textarea id="question" rows="3" placeholder="Ask about buildings, services, disputes, planning, issues..." required></textarea>
+        <button type="submit">Ask</button>
+      </form>
+    </aside>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

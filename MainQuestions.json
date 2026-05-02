@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/gmv-development.schema.json",
+  "title": "Development Features, Facilities, Issues and Incidents",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "developmentName",
+    "features",
+    "facilities",
+    "issues",
+    "incidents"
+  ],
+  "properties": {
+    "developmentName": {
+      "type": "string",
+      "description": "Name of the development, building, block, or tower."
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ventilation": {
+          "type": "string",
+          "enum": [
+            "Unknown",
+            "None",
+            "PIV",
+            "MEV",
+            "MVHR"
+          ]
+        },
+        "cooling": {
+          "type": "string",
+          "enum": [
+            "Unknown",
+            "None",
+            "Floor Cooling",
+            "Cool Air Supply",
+            "Air Conditioning"
+          ]
+        },
+        "parking": {
+          "type": "string",
+          "enum": [
+            "Unknown",
+            "Street Parking",
+            "Outdoor Exposed",
+            "Outdoor Covered",
+            "Indoor Unheated",
+            "Indoor Heated"
+          ]
+        },
+        "communalHeating": {
+          "type": "boolean"
+        },
+        "gasSupply": {
+          "type": "boolean"
+        },
+        "electricSupplyAmperage": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "enum": [
+            60,
+            100,
+            null
+          ],
+          "description": "Use null where amperage is unknown."
+        },
+        "broadbandType": {
+          "type": "string",
+          "enum": [
+            "Unknown",
+            "ADSL",
+            "FTTC",
+            "FTTH",
+            "FTTP"
+          ]
+        },
+        "liftsPerTower": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "liftSizeOrCargoElevator": {
+          "type": "string",
+          "description": "Describe lift size and whether a cargo/service elevator exists."
+        },
+        "roofTerrace": {
+          "type": "boolean"
+        },
+        "barbeque": {
+          "type": "boolean"
+        },
+        "cycleParking": {
+          "type": "string",
+          "enum": [
+            "None",
+            "Outside the Building",
+            "In the Building"
+          ]
+        },
+        "cycleParkingSecurity": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Security rating from 1 to 5. Use null where unknown or not applicable."
+        },
+        "concierge": {
+          "type": "boolean"
+        }
+      }
+    },
+    "facilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gym": {
+          "type": "boolean"
+        },
+        "sauna": {
+          "type": "boolean"
+        },
+        "swimmingPool": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "location": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "Indoor",
+                "Outdoor",
+                null
+              ]
+            },
+            "heated": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        },
+        "sunbeds": {
+          "type": "boolean"
+        }
+      }
+    },
+    "issues": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mould": {
+          "type": "boolean"
+        },
+        "condensation": {
+          "type": "boolean"
+        },
+        "leakingPipes": {
+          "type": "boolean"
+        },
+        "leakingRoof": {
+          "type": "boolean"
+        },
+        "blockedPipe": {
+          "type": "boolean"
+        }
+      }
+    },
+    "incidents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "date",
+          "type",
+          "description"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "Broken Elevator",
+              "Broken Communal Heating",
+              "Fire",
+              "Theft",
+              "Break In",
+              "Blocked Pipes",
+              "Sewage Overflow",
+              "Leaking Roof",
+              "Broken Heating"
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

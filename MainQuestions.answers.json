@@ -1,0 +1,378 @@
+{
+  "schemaSource": "MainQuestions.json",
+  "answerScope": "Farnsworth Court and Greenwich Millennium Village evidence, primarily GMV Phases 1 and 2 where the documents are specific; later GMV phases are noted only where explicitly stated.",
+  "mongoSearch": {
+    "attempted": true,
+    "database": "agent_memory",
+    "collection": "documents",
+    "status": "connected_and_indexed",
+    "documentCount": 11874,
+    "embeddingDimensions": 1024,
+    "vectorSearchIndex": "embedding_vector_cosine_1024",
+    "supportingIndexes": [
+      "building_source_chunk_lookup",
+      "source_chunk_order",
+      "metadata_filename_lookup",
+      "source_type_source_lookup",
+      "chunk_text_keyword_search"
+    ],
+    "note": "MongoDB authentication succeeded after the key was corrected. Atlas Vector Search and supporting lookup/text indexes were created on agent_memory.documents. The existing answer values were already consistent with matching retrieved chunks from the same archive."
+  },
+  "developmentName": {
+    "value": "Farnsworth Court / Greenwich Millennium Village Phases 1 and 2",
+    "confidence": "medium",
+    "evidence": [
+      {
+        "source": "Findings-gmv/Farnsworth Court due-diligence report.pdf",
+        "snippet": "The due-diligence report is specifically about Farnsworth Court and repeatedly discusses GMV Phases 1 and 2 evidence."
+      }
+    ]
+  },
+  "features": {
+    "ventilation": {
+      "value": "Unknown",
+      "confidence": "high",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Farnsworth Court due-diligence report.pdf",
+          "snippet": "No public proof that Farnsworth has MVHR; the fire statement instead describes mechanical or natural smoke ventilation to protected corridors, which is a different thing."
+        },
+        {
+          "source": "Findings-gmv/Planning/GMV_Phases_1_2_Fire_Statement_Form.pdf",
+          "snippet": "Protected corridors have a means of smoke ventilation, mechanical or natural. This is smoke-control/fire strategy evidence, not dwelling ventilation type."
+        }
+      ]
+    },
+    "cooling": {
+      "value": "Unknown",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Farnsworth Court due-diligence report.pdf",
+          "snippet": "No verified Farnsworth-specific active cooling system was found in the public material reviewed."
+        },
+        {
+          "source": "Findings-gmv/Planning/GLA_GMV_Phases_3_4_5_Report.pdf",
+          "snippet": "For later phases, cooling demand was to be minimised through solar shading; this does not prove Farnsworth Court has active cooling."
+        }
+      ]
+    },
+    "parking": {
+      "value": "Indoor Unheated",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Property Market Evidence/Claude Archive/15_farnsworth_property_listings.html",
+          "snippet": "Farnsworth listing evidence refers to a secure parking space on the ground floor of a car park. No evidence found that the car park is heated."
+        },
+        {
+          "source": "Findings-gmv/Development Background/Claude Archive/10_ingenia_homes_new_millennium.html",
+          "snippet": "GMV design summary says car parking was restricted and sited away from properties."
+        }
+      ]
+    },
+    "communalHeating": {
+      "value": true,
+      "confidence": "high",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Farnsworth Court due-diligence report.pdf",
+          "snippet": "Evidence points to community heating and hot water, not individual in-flat boilers; EPC-derived records describe community-scheme heating and hot water."
+        },
+        {
+          "source": "Findings-gmv/Property Market Evidence/Claude Archive/16_housemetric_EPC_data.html",
+          "snippet": "HouseMetric/EPC summary says heating is a community scheme with CHP."
+        }
+      ]
+    },
+    "gasSupply": {
+      "value": true,
+      "confidence": "medium",
+      "interpretation": "Yes at estate/energy-centre level for the CHP/community heat network; no evidence found of individual flat gas boilers or direct individual gas supply.",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Farnsworth Court due-diligence report.pdf",
+          "snippet": "EPC-derived records describe CHP/community mains gas as the main fuel arrangement."
+        },
+        {
+          "source": "Findings-gmv/Planning/GLA_GMV_Phases_3_4_5_Report.pdf",
+          "snippet": "Later-phase planning report refers to gas-fired CHP units as lead heat source for the site heat network."
+        }
+      ]
+    },
+    "electricSupplyAmperage": {
+      "value": null,
+      "confidence": "high",
+      "evidence": [
+        {
+          "source": "Local archive search",
+          "snippet": "No reliable 60A/100A flat supply amperage evidence was found."
+        }
+      ]
+    },
+    "broadbandType": {
+      "value": "Unknown",
+      "confidence": "high",
+      "evidence": [
+        {
+          "source": "Local archive search",
+          "snippet": "No ADSL/FTTC/FTTH/FTTP evidence specific to Farnsworth Court was found."
+        }
+      ]
+    },
+    "liftsPerTower": {
+      "value": 1,
+      "confidence": "low",
+      "interpretation": "At least one lift is evidenced; exact number per tower/core is not evidenced.",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Property Market Evidence/Claude Archive/15_farnsworth_property_listings.html",
+          "snippet": "The apartment is described as being in a lift-serviced block; building features include lift."
+        }
+      ]
+    },
+    "liftSizeOrCargoElevator": {
+      "value": "Unknown; no cargo/service elevator evidence found. Fire statement says evacuation lifts were not considered viable as part of remedial works.",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Planning/GMV_Phases_1_2_Fire_Statement_Form.pdf",
+          "snippet": "Inclusion of evacuation lifts was not considered a reasonable or viable option as part of external wall remedial works."
+        }
+      ]
+    },
+    "roofTerrace": {
+      "value": null,
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Local archive search",
+          "snippet": "No roof terrace evidence found; listings refer to balcony and landscaped communal gardens instead."
+        }
+      ]
+    },
+    "barbeque": {
+      "value": null,
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Local archive search",
+          "snippet": "No barbeque/barbecue facility evidence found."
+        }
+      ]
+    },
+    "cycleParking": {
+      "value": "In the Building",
+      "confidence": "medium",
+      "interpretation": "GMV development-level evidence says secure bicycle storage; exact Farnsworth location/security arrangement not confirmed.",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Development Background/Claude Archive/10_ingenia_homes_new_millennium.html",
+          "snippet": "Environmental design summary includes secure bicycle storage."
+        },
+        {
+          "source": "Findings-gmv/Planning/GLA_GMV_Phases_3_4_5_Report.pdf",
+          "snippet": "Planning transport discussion refers to improved cycle parking and potential redesign of car parking spaces as cycle parking facilities for later phases."
+        }
+      ]
+    },
+    "cycleParkingSecurity": {
+      "value": null,
+      "confidence": "high",
+      "evidence": [
+        {
+          "source": "Local archive search",
+          "snippet": "No 1-5 cycle parking security rating evidence found."
+        }
+      ]
+    },
+    "concierge": {
+      "value": true,
+      "confidence": "high",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Property Market Evidence/Claude Archive/15_farnsworth_property_listings.html",
+          "snippet": "Building features include 24-hour concierge/security and the development is described as portered."
+        },
+        {
+          "source": "Findings-gmv/Corporate/Companies_House_03959700_Officers.html",
+          "snippet": "Companies House correspondence address includes The Concierge Office, Metcalfe Court."
+        }
+      ]
+    }
+  },
+  "facilities": {
+    "gym": {
+      "value": null,
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Local archive search",
+          "snippet": "No gym evidence found."
+        }
+      ]
+    },
+    "sauna": {
+      "value": null,
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Local archive search",
+          "snippet": "No sauna evidence found."
+        }
+      ]
+    },
+    "swimmingPool": {
+      "available": {
+        "value": null,
+        "confidence": "medium",
+        "evidence": [
+          {
+            "source": "Local archive search",
+            "snippet": "No swimming-pool evidence found."
+          }
+        ]
+      },
+      "location": {
+        "value": null,
+        "confidence": "medium"
+      },
+      "heated": {
+        "value": null,
+        "confidence": "medium"
+      }
+    },
+    "sunbeds": {
+      "value": null,
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Local archive search",
+          "snippet": "No sunbed evidence found."
+        }
+      ]
+    }
+  },
+  "issues": {
+    "mould": {
+      "value": null,
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Greenwich Millennium Village legal and dispute map.pdf",
+          "snippet": "The legal/dispute report says no GMV-specific published court, tribunal or ombudsman decision centred on mould was found."
+        }
+      ]
+    },
+    "condensation": {
+      "value": null,
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Farnsworth Court due-diligence report.pdf",
+          "snippet": "The report says long-term condensation performance remains unresolved because public material is weak on vapour control, thermal bridges, and related as-built details."
+        }
+      ]
+    },
+    "leakingPipes": {
+      "value": true,
+      "confidence": "medium",
+      "interpretation": "GMV-level evidence of catastrophic flooding from cold-water-system failures; not proven specifically for Farnsworth Court.",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Legal and Disputes/Keating_Chambers_GMV_v_Essex_Services_Group.html",
+          "snippet": "GMV brought claims for catastrophic flooding caused by failures in a building cold water system, including metallic debris, over-tightening of a nut, a non-return valve where none belonged, and a closed isolation valve."
+        }
+      ]
+    },
+    "leakingRoof": {
+      "value": null,
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Local archive search",
+          "snippet": "No leaking-roof evidence found."
+        }
+      ]
+    },
+    "blockedPipe": {
+      "value": null,
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Local archive search",
+          "snippet": "No blocked-pipe evidence found; the strongest water-services evidence concerns flooding from cold-water-system failures."
+        }
+      ]
+    }
+  },
+  "incidents": [
+    {
+      "date": "2007-07-09",
+      "type": "Broken Elevator",
+      "description": "Inside Housing reported Holly Court lift problems: a resident said she had to carry her seven-year-old daughter with cerebral palsy to a fourth-floor flat because of problems with the lift. This is GMV/Holly Court evidence, not Farnsworth-specific.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Legal and Disputes/Inside_Housing_Tenants_Service_Charges.html",
+          "snippet": "Article date 09.07.07; Hoa Luu had been forced to carry her seven-year-old daughter up to her fourth-floor flat because of problems with the lift."
+        }
+      ]
+    },
+    {
+      "date": "2013-07-01",
+      "type": "Leaking Roof",
+      "description": "Not a roof leak: included as nearest available schema category for a GMV catastrophic flooding/water-system defect litigated in 2013. The source describes cold-water-system failures causing ?4.75m damage. Treat as water-services/flooding evidence, not roof evidence.",
+      "confidence": "low",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Legal and Disputes/Keating_Chambers_GMV_v_Essex_Services_Group.html",
+          "snippet": "Catastrophic flooding occurred at a residential development owned by GMV, caused by failures in the building cold water system, with ?4.75 million damage."
+        }
+      ]
+    },
+    {
+      "date": "2020-01-20",
+      "type": "Fire",
+      "description": "Fire-safety/remediation trigger rather than an actual fire incident: after Government EWS guidance, GMVML commissioned intrusive surveys and all 10 high-rise buildings were deemed to require EWS remediation, including replacement of cladding and installation of suitable fire breaks where missing or inadequate.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Legal and Disputes/Parliament_Written_Evidence_106231.md",
+          "snippet": "Following 20 January 2020 guidance, GMVML commissioned EWS surveys; all 10 high-rise buildings required remediation and suitable fire breaks where missing or inadequate."
+        }
+      ]
+    },
+    {
+      "date": "2022-08-01",
+      "type": "Broken Communal Heating",
+      "description": "Not a dated outage: Switch2 reported the existing heat network serving phases 1 and 2 was outdated and difficult to maintain, and announced a 30-year retrofit/operation/maintenance partnership intended to upgrade equipment while maintaining heat and hot water supply.",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "source": "Findings-gmv/Utilities - Heat Network/Claude Archive/11_switch2_heat_network.html",
+          "snippet": "Publication date Monday 1 August 2022; existing heat network serves phases 1 and 2, originally built between 2000 and 2009, with plant and equipment described as out-dated and difficult to maintain."
+        }
+      ]
+    }
+  ],
+  "notFoundInReviewedSources": [
+    "Electric supply amperage: 60A or 100A",
+    "Broadband type: ADSL, FTTC, FTTH or FTTP",
+    "Exact number of lifts per tower/core",
+    "Lift/cargo elevator dimensions",
+    "Roof terrace",
+    "Barbeque facility",
+    "Cycle parking security rating 1-5",
+    "Gym",
+    "Sauna",
+    "Swimming pool",
+    "Sunbeds",
+    "Theft incidents",
+    "Break-in incidents",
+    "Sewage overflow incidents",
+    "Farnsworth-specific mould decision or incident",
+    "Farnsworth-specific blocked-pipe incident",
+    "Farnsworth-specific leaking-roof incident"
+  ]
+}

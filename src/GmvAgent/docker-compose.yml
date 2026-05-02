@@ -1,0 +1,17 @@
+services:
+  gmv-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      MONGODB_CONNECTION_STRING: ${MONGODB_CONNECTION_STRING}
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-agent_memory}
+      MONGODB_COLLECTION: ${MONGODB_COLLECTION:-documents}
+      MONGODB_VECTOR_INDEX: ${MONGODB_VECTOR_INDEX:-embedding_vector_cosine_1024}
+      BUILDING_ID: ${BUILDING_ID:-gmv}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      VOYAGE_MODEL: ${VOYAGE_MODEL:-voyage-3.5}
