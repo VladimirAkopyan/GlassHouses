@@ -93,44 +93,70 @@ function buildAnswerFooter(extras) {
     footer.appendChild(tag);
   }
 
-  const thumbs = document.createElement("span");
-  thumbs.className = "thumbs";
-  const up = document.createElement("button");
-  up.textContent = "👍";
-  up.title = "Reinforce this — extract a lesson";
-  const down = document.createElement("button");
-  down.textContent = "👎";
-  down.title = "Don't learn from this answer";
-  up.onclick = () => rate(extras.chatId, "up", up, down);
-  down.onclick = () => rate(extras.chatId, "down", up, down);
-  thumbs.appendChild(up);
-  thumbs.appendChild(down);
-  footer.appendChild(thumbs);
+  const feedbackBox = buildFeedbackBox(extras.chatId);
+  footer.appendChild(feedbackBox);
 
   return footer;
 }
 
-async function rate(chatId, value, upBtn, downBtn) {
-  upBtn.classList.toggle("active", value === "up");
-  upBtn.classList.toggle("up", value === "up");
-  downBtn.classList.toggle("active", value === "down");
-  downBtn.classList.toggle("down", value === "down");
-  try {
-    const res = await fetch("/api/rate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chatId, rating: value })
-    });
-    const data = await res.json();
-    if (data.newLesson) {
-      showToast(`Learned: ${data.newLesson.lessonText}`);
+function buildFeedbackBox(chatId) {
+  const wrap = document.createElement("div");
+  wrap.className = "feedbackBox";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Tell the agent what was helpful, missing, or wrong…";
+  input.className = "feedbackInput";
+
+  const submit = document.createElement("button");
+  submit.type = "button";
+  submit.textContent = "Teach";
+  submit.title = "Submit feedback so the agent learns from this answer";
+  submit.className = "feedbackSubmit";
+
+  const send = async () => {
+    const text = input.value.trim();
+    if (!text) return;
+    submit.disabled = true;
+    submit.textContent = "…";
+    try {
+      const res = await fetch("/api/rate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, feedback: text })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error ?? "Feedback failed.");
+        submit.disabled = false;
+        submit.textContent = "Teach";
+        return;
+      }
+      input.disabled = true;
+      submit.textContent = "✓ saved";
+      if (data.newLesson) {
+        showToast(`Learned: ${data.newLesson.lessonText}`);
+      } else {
+        showToast("Saved. No new lesson distilled this time.");
+      }
       await refreshLessons();
-    } else if (value === "up") {
-      showToast("Thanks — no new lesson distilled this time.");
+    } catch (e) {
+      showToast(`Feedback failed: ${e.message}`);
+      submit.disabled = false;
+      submit.textContent = "Teach";
     }
-  } catch (e) {
-    showToast(`Rating failed: ${e.message}`);
-  }
+  };
+  submit.addEventListener("click", send);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      send();
+    }
+  });
+
+  wrap.appendChild(input);
+  wrap.appendChild(submit);
+  return wrap;
 }
 
 async function loadHealth() {
@@ -202,8 +228,15 @@ function renderLessons(list) {
     const stats = document.createElement("div");
     stats.className = "lessonStats";
     const avg = (lesson.avgScoreWhenApplied || 0).toFixed(2);
-    stats.textContent = `applied ${lesson.appliedCount}× · avg score when applied ${avg} · 👍 ${lesson.positiveFeedbackCount}`;
+    stats.textContent = `applied ${lesson.appliedCount}× · avg score when applied ${avg} · ${lesson.feedbackCount ?? 0} feedback`;
     card.appendChild(stats);
+
+    if (lesson.sampleFeedback) {
+      const fb = document.createElement("div");
+      fb.className = "lessonFeedback";
+      fb.textContent = `“${lesson.sampleFeedback}”`;
+      card.appendChild(fb);
+    }
 
     lessonsList.appendChild(card);
   }

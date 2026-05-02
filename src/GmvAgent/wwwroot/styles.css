@@ -356,23 +356,46 @@ button:disabled {
   font-weight: 600;
 }
 
-.thumbs {
-  display: inline-flex;
-  gap: 4px;
-  margin-left: auto;
+.feedbackBox {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
 }
-.thumbs button {
-  background: transparent;
-  color: var(--muted);
+.feedbackInput {
+  flex: 1;
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 6px 10px;
   border: 1px solid var(--line);
-  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+}
+.feedbackInput:focus { border-color: var(--teal); }
+.feedbackInput:disabled { background: rgba(34, 108, 104, 0.06); color: var(--muted); }
+.feedbackSubmit {
+  background: var(--teal);
+  color: white;
+  border: 0;
+  padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
-.thumbs button:hover { color: var(--ink); }
-.thumbs button.active.up { background: var(--teal); color: white; border-color: var(--teal); }
-.thumbs button.active.down { background: var(--brick); color: white; border-color: var(--brick); }
+.feedbackSubmit:hover { background: #1a5552; }
+.feedbackSubmit:disabled { opacity: 0.6; cursor: default; background: var(--muted); }
+
+.lessonFeedback {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--teal);
+  border-left: 2px solid var(--teal);
+  padding-left: 8px;
+}
 
 .lessons {
   border-left: 1px solid var(--line);

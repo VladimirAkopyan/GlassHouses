@@ -67,14 +67,38 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
         augmentedQuestion = $"{request.Question} {string.Join(" ", extraTerms)}".Trim();
     }
 
-    // Re-embed the augmented question for retrieval (so lesson terms actually shift the vector)
+    // Retrieval. Two modes:
+    //  - No lessons match → single retrieval with the original question.
+    //  - Lessons match → DUAL retrieval (original + lesson-augmented with source_type filter),
+    //    then merge by score. Lessons can only ADD high-relevance chunks, never subtract.
     IReadOnlyList<RetrievedPassage> passages;
+    var lessonSourceTypes = relevantLessons
+        .SelectMany(l => l.SuggestedSourceTypes)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
     if (relevantLessons.Count > 0 && queryEmbedding is not null)
     {
         try
         {
+            // Run both retrievals; oversample so the merge has room
+            var originalTask = retrieval.SearchWithEmbeddingAsync(queryEmbedding, limit);
             var augmentedEmbedding = await lessons.EmbedTextAsync(augmentedQuestion, "query");
-            passages = await retrieval.SearchWithEmbeddingAsync(augmentedEmbedding, limit);
+            var augmentedTask = retrieval.SearchWithEmbeddingAsync(
+                augmentedEmbedding, limit, lessonSourceTypes.Count > 0 ? lessonSourceTypes : null);
+            await Task.WhenAll(originalTask, augmentedTask);
+
+            // Merge: dedup by (source_id, chunk_index), keep highest score, sort, take top `limit`
+            var merged = new Dictionary<string, RetrievedPassage>();
+            foreach (var p in originalTask.Result.Concat(augmentedTask.Result))
+            {
+                var key = $"{p.SourceId}#{p.ChunkIndex}";
+                if (!merged.TryGetValue(key, out var existing) || p.Score > existing.Score)
+                {
+                    merged[key] = p;
+                }
+            }
+            passages = merged.Values.OrderByDescending(p => p.Score).Take(limit).ToList();
         }
         catch
         {
@@ -103,19 +127,9 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
         _ = lessons.RecordLessonApplicationsAsync(appliedIds, topScore);
     }
 
-    // Auto-reflect (background, fire-and-forget) so the UI doesn't wait
-    LessonRecord? newLesson = null;
-    try
-    {
-        // We do this synchronously for the demo so the toast can be returned —
-        // hackathon UX > production hygiene. Comment out for fully async behavior.
-        newLesson = await lessons.ReflectAndStoreLessonAsync(chatId);
-    }
-    catch
-    {
-        // reflection failures should never break the chat
-    }
-
+    // Reflection only happens when the user submits feedback (/api/rate) or via
+    // the explicit /api/learn-from-history endpoint. Auto-reflecting on every chat
+    // produced duplicate lessons (one self-graded, one feedback-graded).
     return Results.Ok(new ChatResponse(
         Answer: answer,
         Sources: passages,
@@ -123,21 +137,20 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
         AppliedLessons: relevantLessons,
         TopScore: topScore,
         AvgScoreBaseline: avgBaseline,
-        NewLesson: newLesson,
+        NewLesson: (LessonRecord?)null,
         UsedLessonsMode: useLessons));
 });
 
 app.MapPost("/api/rate", async (RateRequest request, LessonsService lessons) =>
 {
-    var ok = await lessons.RateChatAsync(request.ChatId ?? "", request.Rating ?? "");
-    if (!ok) return Results.BadRequest(new { error = "Invalid chat_id or rating (use 'up' or 'down')." });
-    // If thumbs-up, try reflecting again now that we have a positive signal
-    if (request.Rating == "up")
+    if (string.IsNullOrWhiteSpace(request.ChatId) || string.IsNullOrWhiteSpace(request.Feedback))
     {
-        var lesson = await lessons.ReflectAndStoreLessonAsync(request.ChatId!);
-        return Results.Ok(new { ok = true, newLesson = lesson });
+        return Results.BadRequest(new { error = "chat_id and feedback are required." });
     }
-    return Results.Ok(new { ok = true, newLesson = (LessonRecord?)null });
+    var ok = await lessons.SaveFeedbackAsync(request.ChatId, request.Feedback);
+    if (!ok) return Results.BadRequest(new { error = "Invalid chat_id." });
+    var lesson = await lessons.ReflectAndStoreLessonAsync(request.ChatId);
+    return Results.Ok(new { ok = true, newLesson = lesson });
 });
 
 app.MapGet("/api/lessons", async (LessonsService lessons) =>
@@ -170,7 +183,7 @@ public sealed record ChatResponse(
     double AvgScoreBaseline,
     LessonRecord? NewLesson,
     bool UsedLessonsMode);
-public sealed record RateRequest(string? ChatId, string? Rating);
+public sealed record RateRequest(string? ChatId, string? Feedback);
 
 public sealed record RetrievedPassage(
     string SourceId,
@@ -308,10 +321,11 @@ public sealed class RetrievalService
         return await KeywordSearchAsync(question, limit);
     }
 
-    public async Task<IReadOnlyList<RetrievedPassage>> SearchWithEmbeddingAsync(IReadOnlyList<double> queryVector, int limit)
+    public async Task<IReadOnlyList<RetrievedPassage>> SearchWithEmbeddingAsync(
+        IReadOnlyList<double> queryVector, int limit, IReadOnlyCollection<string>? sourceTypes = null)
     {
         limit = Math.Clamp(limit, 3, 15);
-        return await VectorSearchAsync(queryVector, limit);
+        return await VectorSearchAsync(queryVector, limit, sourceTypes);
     }
 
     private async Task<IReadOnlyList<double>> EmbedQueryAsync(string question)
@@ -343,7 +357,8 @@ public sealed class RetrievalService
         return embedding;
     }
 
-    private async Task<IReadOnlyList<RetrievedPassage>> VectorSearchAsync(IReadOnlyList<double> queryVector, int limit)
+    private async Task<IReadOnlyList<RetrievedPassage>> VectorSearchAsync(
+        IReadOnlyList<double> queryVector, int limit, IReadOnlyCollection<string>? sourceTypes = null)
     {
         var vector = new BsonArray(queryVector.Select(value => new BsonDouble(value)));
         var vectorSearch = new BsonDocument
@@ -355,9 +370,23 @@ public sealed class RetrievalService
             ["limit"] = limit
         };
 
+        var filterClauses = new BsonArray();
         if (!string.IsNullOrWhiteSpace(_secrets.BuildingId))
         {
-            vectorSearch["filter"] = new BsonDocument("building_id", _secrets.BuildingId);
+            filterClauses.Add(new BsonDocument("building_id", _secrets.BuildingId));
+        }
+        if (sourceTypes is { Count: > 0 })
+        {
+            filterClauses.Add(new BsonDocument("source_type",
+                new BsonDocument("$in", new BsonArray(sourceTypes))));
+        }
+        if (filterClauses.Count == 1)
+        {
+            vectorSearch["filter"] = filterClauses[0].AsBsonDocument;
+        }
+        else if (filterClauses.Count > 1)
+        {
+            vectorSearch["filter"] = new BsonDocument("$and", filterClauses);
         }
 
         var pipeline = new[]

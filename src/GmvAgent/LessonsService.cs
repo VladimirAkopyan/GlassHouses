@@ -73,19 +73,15 @@ public sealed class LessonsService
         return doc.GetValue("_id").AsObjectId.ToString();
     }
 
-    public async Task<bool> RateChatAsync(string chatId, string rating)
+    public async Task<bool> SaveFeedbackAsync(string chatId, string feedback)
     {
-        if (!ObjectId.TryParse(chatId, out var oid))
-        {
-            return false;
-        }
-        if (rating is not ("up" or "down"))
-        {
-            return false;
-        }
+        if (!ObjectId.TryParse(chatId, out var oid)) return false;
+        var trimmed = feedback.Trim();
+        if (trimmed.Length == 0) return false;
         var update = Builders<BsonDocument>.Update
-            .Set("rating", rating)
-            .Set("rated_at", DateTime.UtcNow);
+            .Set("feedback", trimmed)
+            .Set("rated_at", DateTime.UtcNow)
+            .Set("reflected_at", BsonNull.Value);  // allow re-reflection with the new feedback
         var result = await _chatHistory.UpdateOneAsync(
             Builders<BsonDocument>.Filter.Eq("_id", oid), update);
         return result.MatchedCount == 1;
@@ -109,7 +105,7 @@ public sealed class LessonsService
     // ---------- lesson lookup ----------
 
     public async Task<IReadOnlyList<LessonRecord>> GetRelevantLessonsAsync(
-        IReadOnlyList<double> questionEmbedding, int topK = 3, double minSim = 0.4)
+        IReadOnlyList<double> questionEmbedding, int topK = 3, double minSim = 0.3)
     {
         var all = await _lessons.Find(FilterDefinition<BsonDocument>.Empty).ToListAsync();
         var ranked = new List<(LessonRecord lesson, double sim)>();
@@ -173,15 +169,12 @@ public sealed class LessonsService
         if (chat is null) return null;
         if (!chat.GetValue("reflected_at", BsonNull.Value).IsBsonNull) return null;
 
-        var rating = chat.GetValue("rating", BsonNull.Value);
+        var feedbackVal = chat.GetValue("feedback", BsonNull.Value);
+        var feedback = feedbackVal.IsBsonNull ? null : feedbackVal.AsString;
         var topScore = chat.GetValue("top_score", 0.0).ToDouble();
-        // Skip reflection on bad chats — they teach the wrong lesson
-        if (!rating.IsBsonNull && rating.AsString == "down")
-        {
-            await MarkReflected(oid);
-            return null;
-        }
-        if (rating.IsBsonNull && topScore < 0.5)
+
+        // No feedback + low top score → nothing to learn from. Skip and mark reflected so we don't retry.
+        if (feedback is null && topScore < 0.5)
         {
             await MarkReflected(oid);
             return null;
@@ -191,14 +184,16 @@ public sealed class LessonsService
         var answer = chat.GetValue("answer", "").AsString;
         var passages = chat.GetValue("retrieved_passages", new BsonArray()).AsBsonArray;
 
-        var extracted = await CallClaudeForLessonAsync(question, answer, passages, rating);
+        var extracted = await CallClaudeForLessonAsync(question, answer, passages, feedback);
         if (extracted is null || !extracted.ShouldSave)
         {
             await MarkReflected(oid);
             return null;
         }
 
-        var patternEmbedding = await EmbedTextAsync(extracted.QuestionPattern, "document");
+        // Embed lesson patterns as "query" so they live in the same vector space as user questions
+        // (which we also embed as "query"). Mixing query+document spaces deflates cosine similarity.
+        var patternEmbedding = await EmbedTextAsync(extracted.QuestionPattern, "query");
         var lessonDoc = new BsonDocument
         {
             ["building_id"] = _secrets.BuildingId,
@@ -210,8 +205,8 @@ public sealed class LessonsService
             ["source_chat_ids"] = new BsonArray(new[] { (BsonValue)oid }),
             ["applied_count"] = 0,
             ["avg_score_when_applied"] = 0.0,
-            ["positive_feedback_count"] = rating.IsBsonNull ? 0 : (rating.AsString == "up" ? 1 : 0),
-            ["negative_feedback_count"] = 0,
+            ["feedback_count"] = feedback is null ? 0 : 1,
+            ["sample_feedback"] = feedback ?? (BsonValue)BsonNull.Value,
             ["created_at"] = DateTime.UtcNow,
             ["updated_at"] = DateTime.UtcNow
         };
@@ -266,9 +261,9 @@ public sealed class LessonsService
         return embedding;
     }
 
-    private async Task<ExtractedLesson?> CallClaudeForLessonAsync(string question, string answer, BsonArray passages, BsonValue rating)
+    private async Task<ExtractedLesson?> CallClaudeForLessonAsync(string question, string answer, BsonArray passages, string? feedback)
     {
-        var ratingStr = rating.IsBsonNull ? "none" : rating.AsString;
+        var feedbackBlock = string.IsNullOrWhiteSpace(feedback) ? "(no user feedback was provided)" : $"\"{feedback}\"";
         var passageSummary = string.Join("\n", passages.Take(5).Select((p, i) =>
         {
             var d = p.AsBsonDocument;
@@ -285,18 +280,20 @@ Top retrieved passages:
 
 Final answer (truncated): "{{(answer.Length > 600 ? answer[..600] + "..." : answer)}}"
 
-User rating: {{ratingStr}}
+User feedback on this answer: {{feedbackBlock}}
 
-Extract one transferable lesson. Return ONLY a JSON object (no prose, no code fences) with this exact schema:
+Extract one transferable lesson. The user's feedback is the strongest signal — if they said the answer was wrong, missed something, or pointed at a better source, encode that in suggested_query_terms / suggested_source_types so the next similar question retrieves better.
+
+Return ONLY a JSON object (no prose, no code fences) with this exact schema:
 {
   "should_save": true | false,
   "question_pattern": "<short generalised form of the question, max 12 words>",
   "suggested_query_terms": ["<3 to 8 keywords or phrases that would help retrieve relevant chunks>"],
   "suggested_source_types": ["<subset of: lease, companies_house, forum, sales_data, notes, other>"],
-  "lesson_text": "<one-sentence lesson, max 25 words>"
+  "lesson_text": "<one-sentence lesson, max 25 words, written as actionable retrieval guidance>"
 }
 
-Set should_save=false if the question is too generic to generalise from, or if the user's rating was 'down', or if no clear retrieval pattern emerges.
+Set should_save=false ONLY if the question is too generic to generalise from, or no clear retrieval pattern emerges. Vague feedback like "good" or "bad" without specifics still counts — extract a lesson from the question + retrieval pattern.
 """;
 
         var body = JsonSerializer.Serialize(new
@@ -362,13 +359,14 @@ public sealed record LessonRecord(
     IReadOnlyList<string> SuggestedSourceTypes,
     int AppliedCount,
     double AvgScoreWhenApplied,
-    int PositiveFeedbackCount,
-    int NegativeFeedbackCount,
+    int FeedbackCount,
+    string? SampleFeedback,
     DateTime CreatedAt,
     double Similarity = 0.0)
 {
     public static LessonRecord FromBson(BsonDocument doc)
     {
+        var sampleFeedbackVal = doc.GetValue("sample_feedback", BsonNull.Value);
         return new LessonRecord(
             Id: doc.GetValue("_id").AsObjectId.ToString(),
             QuestionPattern: doc.GetValue("question_pattern", "").AsString,
@@ -379,8 +377,8 @@ public sealed record LessonRecord(
                 .Select(v => v.AsString).ToList(),
             AppliedCount: doc.GetValue("applied_count", 0).ToInt32(),
             AvgScoreWhenApplied: doc.GetValue("avg_score_when_applied", 0.0).ToDouble(),
-            PositiveFeedbackCount: doc.GetValue("positive_feedback_count", 0).ToInt32(),
-            NegativeFeedbackCount: doc.GetValue("negative_feedback_count", 0).ToInt32(),
+            FeedbackCount: doc.GetValue("feedback_count", doc.GetValue("positive_feedback_count", 0)).ToInt32(),
+            SampleFeedback: sampleFeedbackVal.IsBsonNull ? null : sampleFeedbackVal.AsString,
             CreatedAt: doc.GetValue("created_at", DateTime.MinValue).ToUniversalTime());
     }
 }
