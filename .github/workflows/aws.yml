@@ -14,11 +14,9 @@
 #    Replace the value of the `ECS_SERVICE` environment variable in the workflow below with the name you set for the Amazon ECS service.
 #    Replace the value of the `ECS_CLUSTER` environment variable in the workflow below with the name you set for the cluster.
 #
-# 3. Store your ECS task definition as a JSON file in your repository.
-#    The format should follow the output of `aws ecs register-task-definition --generate-cli-skeleton`.
-#    Replace the value of the `ECS_TASK_DEFINITION` environment variable in the workflow below with the path to the JSON file.
-#    Replace the value of the `CONTAINER_NAME` environment variable in the workflow below with the name of the container
-#    in the `containerDefinitions` section of the task definition.
+# 3. Replace the value of the `CONTAINER_NAME` environment variable in the workflow below with the name
+#    of the container in the `containerDefinitions` section of your task definition. The workflow will
+#    download the current ECS task definition, update the image, and deploy the rendered task definition.
 #
 # 4. Store an IAM user access key in GitHub Actions secrets named `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
 #    See the documentation for each action used below for the recommended IAM policies for this IAM user,
@@ -31,14 +29,11 @@ on:
     branches: [ "main" ]
 
 env:
-  AWS_REGION: eu-west2                  # set this to your preferred AWS region, e.g. us-west-1
-  ECR_REPOSITORY: hackathon-mongo          # set this to your Amazon ECR repository name
-  ECS_SERVICE: MY_ECS_SERVICE                 # set this to your Amazon ECS service name
-  ECS_CLUSTER: wtf-1                 # set this to your Amazon ECS cluster name
-  ECS_TASK_DEFINITION: good # set this to the path to your Amazon ECS task definition
-                                               # file, e.g. .aws/task-definition.json
-  CONTAINER_NAME: chatbot-gmv           # set this to the name of the container in the
-                                               # containerDefinitions section of your task definition
+  AWS_REGION: eu-west-2
+  ECR_REPOSITORY: hackathon-mongo
+  ECS_SERVICE: GlassHouses
+  ECS_CLUSTER: wtf-1
+  CONTAINER_NAME: chatbot-gmv
 
 permissions:
   contents: read
@@ -54,7 +49,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
+      uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -62,7 +57,7 @@ jobs:
 
     - name: Login to Amazon ECR
       id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
+      uses: aws-actions/amazon-ecr-login@v2
 
     - name: Build, tag, and push image to Amazon ECR
       id: build-image
@@ -73,15 +68,28 @@ jobs:
         # Build a docker container and
         # push it to ECR so that it can
         # be deployed to ECS.
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker build -f src/GmvAgent/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG src/GmvAgent
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    - name: Download current Amazon ECS task definition
+      run: |
+        TASK_DEFINITION_ARN=$(aws ecs describe-services \
+          --cluster "$ECS_CLUSTER" \
+          --services "$ECS_SERVICE" \
+          --query "services[0].taskDefinition" \
+          --output text)
+
+        aws ecs describe-task-definition \
+          --task-definition "$TASK_DEFINITION_ARN" \
+          --query taskDefinition \
+          > task-definition.json
 
     - name: Fill in the new image ID in the Amazon ECS task definition
       id: task-def
       uses: aws-actions/amazon-ecs-render-task-definition@v1
       with:
-        task-definition: ${{ env.ECS_TASK_DEFINITION }}
+        task-definition: task-definition.json
         container-name: ${{ env.CONTAINER_NAME }}
         image: ${{ steps.build-image.outputs.image }}
 
