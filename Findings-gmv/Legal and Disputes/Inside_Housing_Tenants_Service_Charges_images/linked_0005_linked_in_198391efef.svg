@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="30px" height="30px" viewBox="0 0 30 30" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 44 (41411) - http://www.bohemiancoding.com/sketch -->
+    <title>Group 4</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Article" transform="translate(-261.000000, -702.000000)">
+            <g id="Group-4" transform="translate(261.000000, 702.000000)">
+                <rect id="Rectangle-16" fill="#3A99D8" x="0" y="0" width="30" height="30"></rect>
+                <polygon id="Path" fill="#FFFFFF" points="12 20 10 20 10 12 12 12"></polygon>
+                <polygon id="Path" fill="#FFFFFF" points="12 11 10 11 10 9 12 9"></polygon>
+                <path d="M21,20.202 L19,20.202 L19,15.66 C19,15.02 18.842,14.542 18.644,14.227 C18.443,13.912 18.057,13.754 17.547,13.754 C16.967,13.754 16.598,13.927 16.338,14.272 C16.078,14.617 16,15.185 16,15.975 L16,20.202 L14,20.202 L14,12.202 L16,12.202 L16,12.894 C16,12.894 16.377,12.436 16.807,12.231 C17.237,12.026 17.702,12 18.152,12 C18.72,12 19.202,12.115 19.567,12.27 C19.931,12.425 20.224,12.659 20.436,12.934 C20.645,13.209 20.79,13.553 20.874,13.949 C20.958,14.344 20.996,14.791 20.996,15.271 L20.996,20.202 L21,20.202 Z" id="Path" fill="#FFFFFF"></path>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,5 @@
+https://switch2.co.uk/wp-content/themes/switch2/resources/images/icon-search.svg	HTTP Error 403: Forbidden
+https://switch2.co.uk/wp-content/themes/switch2/resources/images/cross-light.svg	HTTP Error 403: Forbidden
+https://switch2.co.uk/wp-content/themes/switch2/resources/images/logo.svg	HTTP Error 403: Forbidden
+https://switch2.co.uk/wp-content/themes/switch2/resources/images/logo-white.svg	HTTP Error 403: Forbidden
+https://switch2.co.uk/wp-content/themes/switch2/resources/images/ico-linkedin-white.svg	HTTP Error 403: Forbidden

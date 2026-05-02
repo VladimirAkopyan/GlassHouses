@@ -1,0 +1,16 @@
+# Keating_Chambers_GMV_v_Essex_Services_Group Image Manifest
+
+Image count: 10
+
+| Image | Source | Size | Description |
+| --- | --- | --- | --- |
+| [linked_0001_piers_stansfield_kc_3f7ac70b31.webp](<linked_0001_piers_stansfield_kc_3f7ac70b31.webp>) | [source](https://d34xi2cisccwsg.cloudfront.net/transforms/barristers/_barristerHeadshot/15815/Piers-Stansfield-KC.webp) | ? x ? | Linked image from Keating_Chambers_GMV_v_Essex_Services_Group.html; source filename: Piers-Stansfield-KC.webp |
+| [linked_0002_piers_stansfield_kc_7b697b9ed3.png](<linked_0002_piers_stansfield_kc_7b697b9ed3.png>) | [source](https://d34xi2cisccwsg.cloudfront.net/barristers/Piers-Stansfield-KC.png) | 540 x 540 | Linked image from Keating_Chambers_GMV_v_Essex_Services_Group.html; label/alt text: Piers Stansfield KC |
+| [linked_0003_simon_hargreaves_kc_3dfb98c379.webp](<linked_0003_simon_hargreaves_kc_3dfb98c379.webp>) | [source](https://d34xi2cisccwsg.cloudfront.net/transforms/barristers/_barristerHeadshot/15821/Simon-Hargreaves-KC.webp) | ? x ? | Linked image from Keating_Chambers_GMV_v_Essex_Services_Group.html; source filename: Simon-Hargreaves-KC.webp |
+| [linked_0004_simon_hargreaves_kc_7afaf7536e.png](<linked_0004_simon_hargreaves_kc_7afaf7536e.png>) | [source](https://d34xi2cisccwsg.cloudfront.net/barristers/Simon-Hargreaves-KC.png) | 540 x 540 | Linked image from Keating_Chambers_GMV_v_Essex_Services_Group.html; label/alt text: Simon Hargreaves KC |
+| [linked_0005_legal_500_award_7463937552.svg](<linked_0005_legal_500_award_7463937552.svg>) | [source](https://www.keatingchambers.com/assets/images/awards/UK_Bar_25_Winner_badge_WO.svg) | 419 x 61 | Linked image from Keating_Chambers_GMV_v_Essex_Services_Group.html; label/alt text: Legal 500 Award |
+| [linked_0006_legal_500_award_f6984cdbdf.svg](<linked_0006_legal_500_award_f6984cdbdf.svg>) | [source](https://www.keatingchambers.com/assets/images/awards/Legal%20500_Logo.svg) | 194 x 182 | Linked image from Keating_Chambers_GMV_v_Essex_Services_Group.html; label/alt text: Legal 500 Award |
+| [linked_0007_top_ranked_chamber_1a63a0910f.svg](<linked_0007_top_ranked_chamber_1a63a0910f.svg>) | [source](https://www.keatingchambers.com/assets/images/awards/Chamber_RANKED_2025_logo.svg) | 875 x 778 | Linked image from Keating_Chambers_GMV_v_Essex_Services_Group.html; label/alt text: Top Ranked Chamber |
+| [linked_0008_instagram_logo_9b6fb468c0.svg](<linked_0008_instagram_logo_9b6fb468c0.svg>) | [source](https://www.keatingchambers.com/assets/images/logos/linkedin.svg) | 34 x 32 | Linked image from Keating_Chambers_GMV_v_Essex_Services_Group.html; label/alt text: Instagram Logo |
+| [linked_0009_xinstagram_logo_90b1270c1e.png](<linked_0009_xinstagram_logo_90b1270c1e.png>) | [source](https://www.keatingchambers.com/assets/images/logos/Instagram.png) | 32 x 32 | Linked image from Keating_Chambers_GMV_v_Essex_Services_Group.html; label/alt text: XInstagram Logo |
+| [linked_0010_youttube_logo_d8d0541717.webp](<linked_0010_youttube_logo_d8d0541717.webp>) | [source](https://www.keatingchambers.com/assets/images/logos/youtube-app-white-icon.webp) | ? x ? | Linked image from Keating_Chambers_GMV_v_Essex_Services_Group.html; label/alt text: YoutTube Logo |
