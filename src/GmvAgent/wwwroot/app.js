@@ -5,8 +5,23 @@ const healthDot = document.querySelector("#healthDot");
 const docCount = document.querySelector("#docCount");
 const retrievalMode = document.querySelector("#retrievalMode");
 const llmStatus = document.querySelector("#llmStatus");
+const lessonsToggle = document.querySelector("#lessonsToggle");
+const lessonsToggleLabel = document.querySelector("#lessonsToggleLabel");
+const lessonsList = document.querySelector("#lessonsList");
+const lessonsCount = document.querySelector("#lessonsCount");
+const learnBtn = document.querySelector("#learnBtn");
+const toast = document.querySelector("#toast");
 
-function addMessage(role, text, sources = []) {
+let lastAppliedLessonIds = new Set();
+
+function showToast(text, ms = 4500) {
+  toast.textContent = text;
+  toast.classList.add("show");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toast.classList.remove("show"), ms);
+}
+
+function addMessage(role, text, extras = {}) {
   const node = document.createElement("div");
   node.className = `message ${role}`;
 
@@ -14,6 +29,7 @@ function addMessage(role, text, sources = []) {
   body.textContent = text;
   node.appendChild(body);
 
+  const sources = extras.sources ?? [];
   if (sources.length > 0) {
     const sourceList = document.createElement("div");
     sourceList.className = "sources";
@@ -26,8 +42,95 @@ function addMessage(role, text, sources = []) {
     node.appendChild(sourceList);
   }
 
+  if (role === "assistant" && extras.chatId) {
+    node.appendChild(buildAnswerFooter(extras));
+  }
+
   messages.appendChild(node);
   messages.scrollTop = messages.scrollHeight;
+  return node;
+}
+
+function buildAnswerFooter(extras) {
+  const footer = document.createElement("div");
+  footer.className = "answerFooter";
+
+  const top = Number(extras.topScore || 0);
+  const baseline = Number(extras.avgScoreBaseline || 0);
+  const lessonsApplied = extras.appliedLessons ?? [];
+
+  const scoreChip = document.createElement("span");
+  scoreChip.className = "scoreChip" + (lessonsApplied.length > 0 && top > baseline ? " up" : "");
+  let label = `top ${top.toFixed(2)}`;
+  if (lessonsApplied.length > 0 && baseline > 0) {
+    const delta = top - baseline;
+    const pct = ((delta / baseline) * 100).toFixed(0);
+    const arrow = delta >= 0 ? "↑" : "↓";
+    label += ` · vs baseline ${baseline.toFixed(2)} ${arrow}${pct}%`;
+  }
+  scoreChip.textContent = label;
+  footer.appendChild(scoreChip);
+
+  const modeChip = document.createElement("span");
+  modeChip.className = "lessonChip";
+  if (extras.usedLessonsMode) {
+    modeChip.textContent = lessonsApplied.length > 0
+      ? `${lessonsApplied.length} lesson${lessonsApplied.length > 1 ? "s" : ""} applied`
+      : "lessons ON · none matched";
+  } else {
+    modeChip.style.background = "rgba(169, 79, 62, 0.08)";
+    modeChip.style.borderColor = "rgba(169, 79, 62, 0.4)";
+    modeChip.style.color = "var(--brick)";
+    modeChip.textContent = "lessons OFF";
+  }
+  footer.appendChild(modeChip);
+
+  for (const lesson of lessonsApplied) {
+    const tag = document.createElement("span");
+    tag.className = "lessonChip";
+    tag.title = lesson.lessonText;
+    tag.textContent = lesson.questionPattern;
+    footer.appendChild(tag);
+  }
+
+  const thumbs = document.createElement("span");
+  thumbs.className = "thumbs";
+  const up = document.createElement("button");
+  up.textContent = "👍";
+  up.title = "Reinforce this — extract a lesson";
+  const down = document.createElement("button");
+  down.textContent = "👎";
+  down.title = "Don't learn from this answer";
+  up.onclick = () => rate(extras.chatId, "up", up, down);
+  down.onclick = () => rate(extras.chatId, "down", up, down);
+  thumbs.appendChild(up);
+  thumbs.appendChild(down);
+  footer.appendChild(thumbs);
+
+  return footer;
+}
+
+async function rate(chatId, value, upBtn, downBtn) {
+  upBtn.classList.toggle("active", value === "up");
+  upBtn.classList.toggle("up", value === "up");
+  downBtn.classList.toggle("active", value === "down");
+  downBtn.classList.toggle("down", value === "down");
+  try {
+    const res = await fetch("/api/rate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatId, rating: value })
+    });
+    const data = await res.json();
+    if (data.newLesson) {
+      showToast(`Learned: ${data.newLesson.lessonText}`);
+      await refreshLessons();
+    } else if (value === "up") {
+      showToast("Thanks — no new lesson distilled this time.");
+    }
+  } catch (e) {
+    showToast(`Rating failed: ${e.message}`);
+  }
 }
 
 async function loadHealth() {
@@ -46,6 +149,88 @@ async function loadHealth() {
   }
 }
 
+async function refreshLessons() {
+  try {
+    const res = await fetch("/api/lessons");
+    const data = await res.json();
+    renderLessons(data.lessons ?? []);
+  } catch {
+    /* ignore */
+  }
+}
+
+function renderLessons(list) {
+  lessonsCount.textContent = list.length;
+  lessonsList.innerHTML = "";
+  if (list.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "lessonEmpty";
+    empty.textContent = "No lessons yet. Ask a question, give it a 👍, and watch one appear.";
+    lessonsList.appendChild(empty);
+    return;
+  }
+  for (const lesson of list) {
+    const card = document.createElement("div");
+    card.className = "lessonCard";
+    if (lastAppliedLessonIds.has(lesson.id)) card.classList.add("applied");
+
+    const h = document.createElement("h4");
+    h.textContent = lesson.questionPattern;
+    card.appendChild(h);
+
+    const text = document.createElement("p");
+    text.className = "lessonText";
+    text.textContent = lesson.lessonText;
+    card.appendChild(text);
+
+    const meta = document.createElement("div");
+    meta.className = "lessonMeta";
+    for (const term of (lesson.suggestedQueryTerms ?? []).slice(0, 6)) {
+      const t = document.createElement("span");
+      t.className = "tag";
+      t.textContent = term;
+      meta.appendChild(t);
+    }
+    for (const st of lesson.suggestedSourceTypes ?? []) {
+      const t = document.createElement("span");
+      t.className = "tag";
+      t.textContent = `type:${st}`;
+      meta.appendChild(t);
+    }
+    card.appendChild(meta);
+
+    const stats = document.createElement("div");
+    stats.className = "lessonStats";
+    const avg = (lesson.avgScoreWhenApplied || 0).toFixed(2);
+    stats.textContent = `applied ${lesson.appliedCount}× · avg score when applied ${avg} · 👍 ${lesson.positiveFeedbackCount}`;
+    card.appendChild(stats);
+
+    lessonsList.appendChild(card);
+  }
+}
+
+lessonsToggle.addEventListener("change", () => {
+  const on = lessonsToggle.checked;
+  lessonsToggleLabel.textContent = on ? "ON" : "OFF";
+  lessonsToggle.parentElement.classList.toggle("off", !on);
+});
+
+learnBtn.addEventListener("click", async () => {
+  learnBtn.disabled = true;
+  learnBtn.textContent = "Learning…";
+  try {
+    const res = await fetch("/api/learn-from-history", { method: "POST" });
+    const data = await res.json();
+    showToast(`Backfilled ${data.lessonsCreated} lesson${data.lessonsCreated === 1 ? "" : "s"} from history.`);
+    await refreshLessons();
+  } catch (e) {
+    showToast(`Learn failed: ${e.message}`);
+  } finally {
+    learnBtn.disabled = false;
+    learnBtn.textContent = "Learn from history";
+  }
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = question.value.trim();
@@ -59,14 +244,30 @@ form.addEventListener("submit", async (event) => {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: text, limit: 8 })
+      body: JSON.stringify({
+        question: text,
+        limit: 8,
+        useLessons: lessonsToggle.checked
+      })
     });
 
     const data = await response.json();
     if (!response.ok) {
       addMessage("assistant", data.error ?? "The request failed.");
     } else {
-      addMessage("assistant", data.answer, data.sources ?? []);
+      lastAppliedLessonIds = new Set((data.appliedLessons ?? []).map(l => l.id));
+      addMessage("assistant", data.answer, {
+        sources: data.sources ?? [],
+        chatId: data.chatId,
+        topScore: data.topScore,
+        avgScoreBaseline: data.avgScoreBaseline,
+        appliedLessons: data.appliedLessons ?? [],
+        usedLessonsMode: data.usedLessonsMode
+      });
+      if (data.newLesson) {
+        showToast(`Learned: ${data.newLesson.lessonText}`);
+      }
+      await refreshLessons();
     }
   } catch (error) {
     addMessage("assistant", `Network error: ${error.message}`);
@@ -77,3 +278,4 @@ form.addEventListener("submit", async (event) => {
 });
 
 loadHealth();
+refreshLessons();

@@ -80,7 +80,13 @@
           <p class="kicker">Ask the archive</p>
           <h2>GMV Chat</h2>
         </div>
-        <span id="healthDot" class="dot"></span>
+        <div class="chatHeaderRight">
+          <label class="lessonsToggle" title="When ON, the agent applies learned retrieval lessons.">
+            <input type="checkbox" id="lessonsToggle" checked>
+            <span>Lessons <strong id="lessonsToggleLabel">ON</strong></span>
+          </label>
+          <span id="healthDot" class="dot"></span>
+        </div>
       </div>
       <div id="messages" class="messages">
         <div class="message assistant">
@@ -92,7 +98,25 @@
         <button type="submit">Ask</button>
       </form>
     </aside>
+
+    <aside class="lessons" aria-label="Lesson library">
+      <div class="lessonsHeader">
+        <div>
+          <p class="kicker">Adaptive layer</p>
+          <h2>Lesson library <span id="lessonsCount" class="lessonsCount">0</span></h2>
+        </div>
+        <button id="learnBtn" type="button" title="Backfill lessons from existing chat history">Learn from history</button>
+      </div>
+      <p class="lessonsCaption">
+        Each rated chat distils a transferable lesson. On the next similar question, lessons expand the
+        retrieval query and guide Claude — visible as a higher top score and a richer answer.
+      </p>
+      <div id="lessonsList" class="lessonsList">
+        <div class="lessonEmpty">No lessons yet. Ask a question, give it a 👍, and watch one appear.</div>
+      </div>
+    </aside>
   </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/app.js"></script>
 </body>
 </html>

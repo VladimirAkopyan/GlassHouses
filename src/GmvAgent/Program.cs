@@ -11,6 +11,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton(AppSecrets.Load());
 builder.Services.AddSingleton<RetrievalService>();
 builder.Services.AddSingleton<ClaudeService>();
+builder.Services.AddSingleton<LessonsService>();
 
 var app = builder.Build();
 
@@ -29,23 +30,147 @@ app.MapGet("/api/health", async (RetrievalService retrieval, AppSecrets secrets)
     });
 });
 
-app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval, ClaudeService claude) =>
+app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval, ClaudeService claude, LessonsService lessons) =>
 {
     if (string.IsNullOrWhiteSpace(request.Question))
     {
         return Results.BadRequest(new { error = "Question is required." });
     }
 
-    var passages = await retrieval.SearchAsync(request.Question, request.Limit ?? 8);
-    var answer = await claude.AnswerAsync(request.Question, passages);
+    var useLessons = request.UseLessons ?? true;
+    var limit = request.Limit ?? 8;
 
-    return Results.Ok(new ChatResponse(answer, passages));
+    // Embed once; reuse for retrieval AND lesson lookup
+    IReadOnlyList<double>? queryEmbedding = null;
+    try
+    {
+        queryEmbedding = await lessons.EmbedTextAsync(request.Question, "query");
+    }
+    catch
+    {
+        // If embedding fails, retrieval will fall back to keyword search and lessons stay empty
+    }
+
+    // Pull relevant lessons (or skip if toggle off)
+    IReadOnlyList<LessonRecord> relevantLessons = useLessons && queryEmbedding is not null
+        ? await lessons.GetRelevantLessonsAsync(queryEmbedding)
+        : Array.Empty<LessonRecord>();
+
+    // Apply lessons to query: append suggested terms
+    var augmentedQuestion = request.Question;
+    if (relevantLessons.Count > 0)
+    {
+        var extraTerms = relevantLessons
+            .SelectMany(l => l.SuggestedQueryTerms)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(8);
+        augmentedQuestion = $"{request.Question} {string.Join(" ", extraTerms)}".Trim();
+    }
+
+    // Re-embed the augmented question for retrieval (so lesson terms actually shift the vector)
+    IReadOnlyList<RetrievedPassage> passages;
+    if (relevantLessons.Count > 0 && queryEmbedding is not null)
+    {
+        try
+        {
+            var augmentedEmbedding = await lessons.EmbedTextAsync(augmentedQuestion, "query");
+            passages = await retrieval.SearchWithEmbeddingAsync(augmentedEmbedding, limit);
+        }
+        catch
+        {
+            passages = await retrieval.SearchAsync(request.Question, limit);
+        }
+    }
+    else
+    {
+        passages = queryEmbedding is not null
+            ? await retrieval.SearchWithEmbeddingAsync(queryEmbedding, limit)
+            : await retrieval.SearchAsync(request.Question, limit);
+    }
+
+    var answer = await claude.AnswerAsync(request.Question, passages, relevantLessons);
+
+    var avgBaseline = await lessons.GetAvgScoreWithoutLessonsAsync();
+    var topScore = passages.Count > 0 ? passages.Max(p => p.Score) : 0.0;
+    var appliedIds = relevantLessons.Select(l => l.Id).ToList();
+
+    var chatId = await lessons.RecordChatAsync(
+        request.Question, queryEmbedding, passages, answer, useLessons, appliedIds, avgBaseline);
+
+    if (relevantLessons.Count > 0)
+    {
+        // fire-and-forget: bump usage stats
+        _ = lessons.RecordLessonApplicationsAsync(appliedIds, topScore);
+    }
+
+    // Auto-reflect (background, fire-and-forget) so the UI doesn't wait
+    LessonRecord? newLesson = null;
+    try
+    {
+        // We do this synchronously for the demo so the toast can be returned —
+        // hackathon UX > production hygiene. Comment out for fully async behavior.
+        newLesson = await lessons.ReflectAndStoreLessonAsync(chatId);
+    }
+    catch
+    {
+        // reflection failures should never break the chat
+    }
+
+    return Results.Ok(new ChatResponse(
+        Answer: answer,
+        Sources: passages,
+        ChatId: chatId,
+        AppliedLessons: relevantLessons,
+        TopScore: topScore,
+        AvgScoreBaseline: avgBaseline,
+        NewLesson: newLesson,
+        UsedLessonsMode: useLessons));
+});
+
+app.MapPost("/api/rate", async (RateRequest request, LessonsService lessons) =>
+{
+    var ok = await lessons.RateChatAsync(request.ChatId ?? "", request.Rating ?? "");
+    if (!ok) return Results.BadRequest(new { error = "Invalid chat_id or rating (use 'up' or 'down')." });
+    // If thumbs-up, try reflecting again now that we have a positive signal
+    if (request.Rating == "up")
+    {
+        var lesson = await lessons.ReflectAndStoreLessonAsync(request.ChatId!);
+        return Results.Ok(new { ok = true, newLesson = lesson });
+    }
+    return Results.Ok(new { ok = true, newLesson = (LessonRecord?)null });
+});
+
+app.MapGet("/api/lessons", async (LessonsService lessons) =>
+{
+    var list = await lessons.ListAllLessonsAsync();
+    return Results.Ok(new { count = list.Count, lessons = list });
+});
+
+app.MapPost("/api/learn-from-history", async (LessonsService lessons, int? max) =>
+{
+    var n = await lessons.LearnFromHistoryAsync(max ?? 20);
+    return Results.Ok(new { lessonsCreated = n });
+});
+
+app.MapPost("/api/lessons/clear", async (LessonsService lessons) =>
+{
+    var n = await lessons.ClearAllLessonsAsync();
+    return Results.Ok(new { deleted = n });
 });
 
 app.Run();
 
-public sealed record ChatRequest(string Question, int? Limit);
-public sealed record ChatResponse(string Answer, IReadOnlyList<RetrievedPassage> Sources);
+public sealed record ChatRequest(string Question, int? Limit, bool? UseLessons);
+public sealed record ChatResponse(
+    string Answer,
+    IReadOnlyList<RetrievedPassage> Sources,
+    string ChatId,
+    IReadOnlyList<LessonRecord> AppliedLessons,
+    double TopScore,
+    double AvgScoreBaseline,
+    LessonRecord? NewLesson,
+    bool UsedLessonsMode);
+public sealed record RateRequest(string? ChatId, string? Rating);
 
 public sealed record RetrievedPassage(
     string SourceId,
@@ -183,6 +308,12 @@ public sealed class RetrievalService
         return await KeywordSearchAsync(question, limit);
     }
 
+    public async Task<IReadOnlyList<RetrievedPassage>> SearchWithEmbeddingAsync(IReadOnlyList<double> queryVector, int limit)
+    {
+        limit = Math.Clamp(limit, 3, 15);
+        return await VectorSearchAsync(queryVector, limit);
+    }
+
     private async Task<IReadOnlyList<double>> EmbedQueryAsync(string question)
     {
         var client = _httpClientFactory.CreateClient();
@@ -297,7 +428,10 @@ public sealed class ClaudeService
         _httpClientFactory = httpClientFactory;
     }
 
-    public async Task<string> AnswerAsync(string question, IReadOnlyList<RetrievedPassage> passages)
+    public async Task<string> AnswerAsync(
+        string question,
+        IReadOnlyList<RetrievedPassage> passages,
+        IReadOnlyList<LessonRecord>? appliedLessons = null)
     {
         if (string.IsNullOrWhiteSpace(_secrets.AnthropicApiKey))
         {
@@ -305,6 +439,7 @@ public sealed class ClaudeService
         }
 
         var context = BuildContext(passages);
+        var lessonsBlock = BuildLessonsBlock(appliedLessons);
         var userPrompt = $"""
         Question:
         {question}
@@ -316,12 +451,15 @@ public sealed class ClaudeService
         Cite sources inline using [source_id#chunk_index] after the sentence they support.
         """;
 
+        var systemPrompt = "You are a careful due-diligence assistant for Greenwich Millennium Village. You answer from retrieved source chunks, distinguish evidence from inference, and avoid legal or financial advice."
+            + lessonsBlock;
+
         var body = JsonSerializer.Serialize(new
         {
             model = _secrets.AnthropicModel,
             max_tokens = 1200,
             temperature = 0.2,
-            system = "You are a careful due-diligence assistant for Greenwich Millennium Village. You answer from retrieved source chunks, distinguish evidence from inference, and avoid legal or financial advice.",
+            system = systemPrompt,
             messages = new[]
             {
                 new { role = "user", content = userPrompt }
@@ -361,6 +499,21 @@ public sealed class ClaudeService
             sb.AppendLine();
         }
 
+        return sb.ToString();
+    }
+
+    private static string BuildLessonsBlock(IReadOnlyList<LessonRecord>? lessons)
+    {
+        if (lessons is null || lessons.Count == 0) return "";
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.AppendLine("---");
+        sb.AppendLine("Learned guidance from past similar questions (apply when relevant):");
+        foreach (var l in lessons)
+        {
+            sb.AppendLine($"- {l.LessonText}");
+        }
         return sb.ToString();
     }
 }

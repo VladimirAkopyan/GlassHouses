@@ -23,8 +23,19 @@ body {
 
 .shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 31vw);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 28vw) minmax(280px, 22vw);
   min-height: 100vh;
+}
+
+@media (max-width: 1280px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 36vw);
+  }
+  .lessons {
+    grid-column: 1 / -1;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
 }
 
 .content {
@@ -292,4 +303,196 @@ button:disabled {
   .gallery {
     grid-template-columns: 1fr;
   }
+}
+
+/* ============ Adaptive layer additions ============ */
+
+.chatHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lessonsToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.lessonsToggle input { accent-color: var(--teal); }
+.lessonsToggle strong { color: var(--teal); }
+.lessonsToggle.off strong { color: var(--brick); }
+
+.message .answerFooter {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+}
+
+.scoreChip {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.scoreChip.up { color: var(--teal); border-color: var(--teal); }
+
+.lessonChip {
+  background: rgba(34, 108, 104, 0.08);
+  border: 1px solid rgba(34, 108, 104, 0.4);
+  color: var(--teal);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.thumbs {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.thumbs button {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+.thumbs button:hover { color: var(--ink); }
+.thumbs button.active.up { background: var(--teal); color: white; border-color: var(--teal); }
+.thumbs button.active.down { background: var(--brick); color: white; border-color: var(--brick); }
+
+.lessons {
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  padding: 22px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lessonsHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.lessonsHeader h2 {
+  font-size: 1.02rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lessonsCount {
+  background: var(--teal);
+  color: white;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.lessonsHeader button {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.lessonsCaption {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+
+.lessonsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lessonEmpty {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-style: italic;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  text-align: center;
+}
+.lessonCard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--paper);
+  font-size: 0.82rem;
+}
+.lessonCard.applied {
+  border-color: var(--teal);
+  background: rgba(34, 108, 104, 0.05);
+}
+.lessonCard h4 {
+  margin: 0 0 4px;
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+.lessonCard .lessonText {
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.lessonCard .lessonMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.lessonCard .lessonMeta .tag {
+  background: white;
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.lessonCard .lessonStats {
+  margin-top: 6px;
+  font-size: 0.7rem;
+  color: var(--muted);
+  border-top: 1px dashed var(--line);
+  padding-top: 6px;
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--ink);
+  color: white;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 1000;
+  max-width: min(560px, 90vw);
+  text-align: center;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
