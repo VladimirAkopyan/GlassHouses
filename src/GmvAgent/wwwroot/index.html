@@ -3,8 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GMV Evidence Agent</title>
+  <title>Glass Houses</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
   <main class="shell">
@@ -12,65 +14,35 @@
       <header class="hero">
         <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Greenwich_Millennium_Village_-_Renaissance_Walk.jpg/1280px-Greenwich_Millennium_Village_-_Renaissance_Walk.jpg" alt="Buildings on Renaissance Walk in Greenwich Millennium Village">
         <div class="heroText">
-          <p class="kicker">Residential due diligence assistant</p>
-          <h1>Greenwich Millennium Village Evidence Agent</h1>
+          <p class="kicker">UK Development Search Assistant</p>
+          <h1>Glass Houses</h1>
           <p>
-            Ask questions against the GMV document archive: planning reports, property particulars,
-            Companies House extracts, tribunal notes, acoustic reports, heat-network records, and
-            other source material already embedded in MongoDB.
+            Search for details about any development in the UK. Use our AI chatbot to ask any question.
           </p>
         </div>
       </header>
 
-      <section class="summary">
-        <div>
-          <h2>Development Summary</h2>
-          <p>
-            Greenwich Millennium Village is a mixed-tenure modern development on the Greenwich Peninsula,
-            planned as an urban village and part of the Millennium Communities Programme. The archive
-            evidence points to an ambitious early-2000s sustainability brief, community heat network,
-            landscaped courtyards, strong transport links, and a long record of later due-diligence issues
-            around external-wall remediation, service charges, acoustic complaints, and infrastructure ageing.
-          </p>
-        </div>
-        <dl>
-          <div><dt>Archive chunks</dt><dd id="docCount">Checking...</dd></div>
-          <div><dt>Retrieval</dt><dd id="retrievalMode">Checking...</dd></div>
-          <div><dt>LLM</dt><dd id="llmStatus">Checking...</dd></div>
-        </dl>
-      </section>
-
-      <section class="gallery" aria-label="GMV image gallery">
-        <article>
-          <img src="https://s0.geograph.org.uk/geophotos/02/60/02/2600206_8ad276c9.jpg" alt="Renaissance Walk, North Greenwich">
-          <div>
-            <h2>Renaissance Walk</h2>
-            <p>Part of Greenwich Millennium Village, overlooking landscaped water features.</p>
-          </div>
-        </article>
-        <article>
-          <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Greenwich_Millennium_Village_-_Renaissance_Walk.jpg/640px-Greenwich_Millennium_Village_-_Renaissance_Walk.jpg" alt="GMV buildings and balconies beside water">
-          <div>
-            <h2>Waterside Blocks</h2>
-            <p>Distinctive coloured balconies and curved roof forms in the original GMV fabric.</p>
-          </div>
-        </article>
-        <article>
-          <img src="/assets/archive-overview.png" alt="Archive source overview graphic">
-          <div>
-            <h2>Evidence Map</h2>
-            <p>Source archive organised around planning, legal disputes, property evidence, and corporate records.</p>
-          </div>
-        </article>
+      <section class="map">
+        <h2>Development Locations</h2>
+        <div id="map"></div>
       </section>
 
       <section class="notes">
-        <h2>How Answers Are Produced</h2>
-        <p>
-          The backend retrieves relevant chunks from MongoDB. If a Voyage API key is configured it uses Atlas
-          Vector Search over the existing 1024-dimensional embeddings; otherwise it falls back to Mongo text
-          search. Claude then writes the answer using only the retrieved passages and cites source ids.
-        </p>
+        <div class="notesMain">
+          <h2>How Answers Are Produced</h2>
+          <p>
+            The backend retrieves relevant chunks from MongoDB. If a Voyage API key is configured it uses Atlas
+            Vector Search over the existing 1024-dimensional embeddings; otherwise it falls back to Mongo text
+            search. Claude then writes the answer using only the retrieved passages and cites source ids.
+          </p>
+        </div>
+        <div class="notesStats">
+          <dl>
+            <div><dt>Archive chunks</dt><dd id="docCount">Checking...</dd></div>
+            <div><dt>Retrieval</dt><dd id="retrievalMode">Checking...</dd></div>
+            <div><dt>LLM</dt><dd id="llmStatus">Checking...</dd></div>
+          </dl>
+        </div>
       </section>
     </section>
 

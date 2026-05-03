@@ -1,11 +1,17 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using DotNetEnv;
+
+DotNetEnv.Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.AddConsole();
 
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton(AppSecrets.Load());
@@ -14,6 +20,8 @@ builder.Services.AddSingleton<ClaudeService>();
 builder.Services.AddSingleton<LessonsService>();
 
 var app = builder.Build();
+
+app.Logger.LogInformation("Starting app");
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -28,6 +36,12 @@ app.MapGet("/api/health", async (RetrievalService retrieval, AppSecrets secrets)
         claudeConfigured = !string.IsNullOrWhiteSpace(secrets.AnthropicApiKey),
         vectorRetrievalConfigured = !string.IsNullOrWhiteSpace(secrets.VoyageApiKey)
     });
+});
+
+app.MapGet("/api/map-entries", async (RetrievalService retrieval) =>
+{
+    var points = await retrieval.GetMapPointsAsync();
+    return Results.Ok(points);
 });
 
 app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval, ClaudeService claude, LessonsService lessons) =>
@@ -171,7 +185,14 @@ public sealed record ChatResponse(
     LessonRecord? NewLesson,
     bool UsedLessonsMode);
 public sealed record RateRequest(string? ChatId, string? Rating);
-
+public sealed record MapEntry(
+    string SourceId,
+    string? SourceType,
+    int ChunkIndex,
+    string? Filename,
+    int? Page,
+    double? Latitude,
+    double? Longitude);
 public sealed record RetrievedPassage(
     string SourceId,
     string? SourceType,
@@ -288,6 +309,28 @@ public sealed class RetrievalService
         };
     }
 
+    public async Task<IReadOnlyList<MapEntry>> GetMapPointsAsync()
+    {
+        var filter = string.IsNullOrWhiteSpace(_secrets.BuildingId)
+            ? FilterDefinition<BsonDocument>.Empty
+            : Builders<BsonDocument>.Filter.Eq("building_id", _secrets.BuildingId);
+
+        var projection = Builders<BsonDocument>.Projection
+            .Include("source_id")
+            .Include("source_type")
+            .Include("chunk_index")
+            .Include("metadata");
+
+        var docs = await _documents.Find(filter)
+            .Project(projection)
+            .ToListAsync();
+
+        return docs
+            .Select(ToMapEntry)
+            .Where(entry => entry.Latitude.HasValue && entry.Longitude.HasValue)
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<RetrievedPassage>> SearchAsync(string question, int limit)
     {
         limit = Math.Clamp(limit, 3, 15);
@@ -398,6 +441,106 @@ public sealed class RetrievalService
             .ToListAsync();
 
         return docs.Select(ToPassage).ToList();
+    }
+
+    private static MapEntry ToMapEntry(BsonDocument doc)
+    {
+        var metadata = doc.GetValue("metadata", new BsonDocument()).AsBsonDocument;
+        var pageValue = metadata.GetValue("page", BsonNull.Value);
+        int? page = pageValue.IsBsonNull ? null : pageValue.ToInt32();
+
+        var latitude = ExtractCoordinate(metadata, "latitude", "lat", "location.latitude", "location.lat");
+        var longitude = ExtractCoordinate(metadata, "longitude", "lng", "lon", "location.longitude", "location.lng");
+
+        if (!latitude.HasValue || !longitude.HasValue)
+        {
+            var arrayCoords = GetCoordinatesFromArray(metadata, "coordinates", "location.coordinates");
+            if (arrayCoords.latitude.HasValue && arrayCoords.longitude.HasValue)
+            {
+                latitude = latitude ?? arrayCoords.latitude;
+                longitude = longitude ?? arrayCoords.longitude;
+            }
+        }
+
+        return new MapEntry(
+            SourceId: doc.GetValue("source_id", "").AsString,
+            SourceType: doc.GetValue("source_type", BsonNull.Value).IsBsonNull ? null : doc.GetValue("source_type").AsString,
+            ChunkIndex: doc.GetValue("chunk_index", 0).ToInt32(),
+            Filename: metadata.GetValue("filename", BsonNull.Value).IsBsonNull ? null : metadata.GetValue("filename").AsString,
+            Page: page,
+            Latitude: latitude,
+            Longitude: longitude);
+    }
+
+    private static double? ExtractCoordinate(BsonDocument metadata, params string[] paths)
+    {
+        foreach (var path in paths)
+        {
+            if (TryGetValue(metadata, path, out var value) && ParseCoordinate(value) is double parsed)
+            {
+                return parsed;
+            }
+        }
+
+        return null;
+    }
+
+    private static (double? latitude, double? longitude) GetCoordinatesFromArray(BsonDocument metadata, params string[] paths)
+    {
+        foreach (var path in paths)
+        {
+            if (!TryGetValue(metadata, path, out var arrayValue) || !arrayValue.IsBsonArray)
+            {
+                continue;
+            }
+
+            var array = arrayValue.AsBsonArray;
+            if (array.Count < 2) continue;
+
+            var first = ParseCoordinate(array[0]);
+            var second = ParseCoordinate(array[1]);
+            if (!first.HasValue || !second.HasValue) continue;
+
+            // Assume [lng, lat] when values look like longitude/latitude pair.
+            if (Math.Abs(first.Value) > 90 && Math.Abs(second.Value) <= 90)
+            {
+                return (latitude: second, longitude: first);
+            }
+
+            return (latitude: first, longitude: second);
+        }
+
+        return (null, null);
+    }
+
+    private static bool TryGetValue(BsonDocument document, string path, out BsonValue value)
+    {
+        value = BsonNull.Value;
+        var current = (BsonValue)document;
+        foreach (var segment in path.Split('.'))
+        {
+            if (!current.IsBsonDocument || !current.AsBsonDocument.TryGetValue(segment, out current))
+            {
+                return false;
+            }
+        }
+
+        value = current;
+        return true;
+    }
+
+    private static double? ParseCoordinate(BsonValue value)
+    {
+        if (value.IsBsonNull) return null;
+        if (value.IsDouble) return value.AsDouble;
+        if (value.IsInt32) return value.AsInt32;
+        if (value.IsInt64) return value.AsInt64;
+        if (value.IsString && double.TryParse(value.AsString, NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
+        {
+            return result;
+        }
+
+        return null;
     }
 
     private static RetrievedPassage ToPassage(BsonDocument doc)

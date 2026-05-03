@@ -78,6 +78,17 @@ body {
   color: white;
 }
 
+.map {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 22px;
+}
+
+#map {
+  height: 400px;
+  width: 100%;
+}
+
 .kicker {
   margin: 0 0 8px;
   color: var(--gold);
@@ -113,7 +124,8 @@ p {
   padding: 22px;
 }
 
-.summary {
+.summary,
+.notes {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(250px, 330px);
   gap: 24px;
@@ -123,6 +135,18 @@ p {
 .notes p,
 .gallery p {
   color: var(--muted);
+}
+
+.notesStats {
+  display: grid;
+  align-items: start;
+}
+
+@media (max-width: 1080px) {
+  .summary,
+  .notes {
+    grid-template-columns: 1fr;
+  }
 }
 
 dl {

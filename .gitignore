@@ -2,7 +2,5 @@ APiKeys.json
 .venv/
 __pycache__/
 *.pyc
-.env
-**/.env
 **/bin/
 **/obj/

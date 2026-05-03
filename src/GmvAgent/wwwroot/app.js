@@ -279,3 +279,13 @@ form.addEventListener("submit", async (event) => {
 
 loadHealth();
 refreshLessons();
+
+// Initialize map
+const map = L.map('map').setView([51.4839, 0.0044], 13); // Greenwich coordinates
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+L.marker([51.4839, 0.0044]).addTo(map)
+    .bindPopup('Greenwich Millennium Village')
+    .openPopup();
