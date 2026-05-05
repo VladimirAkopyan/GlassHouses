@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Glass Houses</title>
   <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="">
 </head>
 <body>
   <main class="shell">
@@ -14,35 +15,18 @@
       <header class="hero">
         <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Greenwich_Millennium_Village_-_Renaissance_Walk.jpg/1280px-Greenwich_Millennium_Village_-_Renaissance_Walk.jpg" alt="Buildings on Renaissance Walk in Greenwich Millennium Village">
         <div class="heroText">
-          <p class="kicker">UK Development Search Assistant</p>
+          <p class="kicker">Residential due diligence assistant</p>
           <h1>Glass Houses</h1>
-          <p>
-            Search for details about any development in the UK. Use our AI chatbot to ask any question.
-          </p>
         </div>
       </header>
 
-      <section class="map">
-        <h2>Development Locations</h2>
-        <div id="map"></div>
-      </section>
-
-      <section class="notes">
-        <div class="notesMain">
-          <h2>How Answers Are Produced</h2>
-          <p>
-            The backend retrieves relevant chunks from MongoDB. If a Voyage API key is configured it uses Atlas
-            Vector Search over the existing 1024-dimensional embeddings; otherwise it falls back to Mongo text
-            search. Claude then writes the answer using only the retrieved passages and cites source ids.
-          </p>
-        </div>
-        <div class="notesStats">
-          <dl>
-            <div><dt>Archive chunks</dt><dd id="docCount">Checking...</dd></div>
-            <div><dt>Retrieval</dt><dd id="retrievalMode">Checking...</dd></div>
-            <div><dt>LLM</dt><dd id="llmStatus">Checking...</dd></div>
-          </dl>
-        </div>
+      <section class="mapPanel" aria-label="Conversation map">
+        <header class="mapPanelHeader">
+          <p class="kicker">Conversation map</p>
+          <h2>Where we've been</h2>
+          <p class="mapPanelCaption" id="mapStatus">Pins drop here as Claude answers questions about specific places.</p>
+        </header>
+        <div id="map" class="leafletMap" role="img" aria-label="OpenStreetMap of GMV with pins"></div>
       </section>
     </section>
 
@@ -50,7 +34,7 @@
       <div class="chatHeader">
         <div>
           <p class="kicker">Ask the archive</p>
-          <h2>GMV Chat</h2>
+          <h2>Glass Houses Chat</h2>
         </div>
         <div class="chatHeaderRight">
           <label class="lessonsToggle" title="When ON, the agent applies learned retrieval lessons.">
@@ -89,6 +73,9 @@
     </aside>
   </main>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
   <script src="/app.js"></script>
 </body>
 </html>
