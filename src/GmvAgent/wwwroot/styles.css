@@ -278,6 +278,31 @@ dd {
   font-size: 0.78rem;
 }
 
+.complaints {
+  margin-top: 12px;
+  padding: 10px;
+  background: #f5f1eb;
+  border-left: 3px solid #d9573d;
+  border-radius: 3px;
+  font-size: 0.85rem;
+}
+
+.complaintTitle {
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.complaintItem {
+  margin: 6px 0;
+  color: #555;
+  line-height: 1.4;
+}
+
+.complaintItem strong {
+  color: #333;
+}
+
 .composer {
   display: grid;
   gap: 10px;
@@ -349,6 +374,19 @@ button:disabled {
 .lessonsToggle input { accent-color: var(--teal); }
 .lessonsToggle strong { color: var(--teal); }
 .lessonsToggle.off strong { color: var(--brick); }
+
+.complaintsToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.complaintsToggle input { accent-color: #d9573d; }
+.complaintsToggle strong { color: var(--teal); }
+.complaintsToggle.off strong { color: var(--brick); }
 
 .message .answerFooter {
   margin-top: 10px;

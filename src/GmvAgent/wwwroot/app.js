@@ -7,6 +7,8 @@ const retrievalMode = document.querySelector("#retrievalMode");
 const llmStatus = document.querySelector("#llmStatus");
 const lessonsToggle = document.querySelector("#lessonsToggle");
 const lessonsToggleLabel = document.querySelector("#lessonsToggleLabel");
+const complaintsToggle = document.querySelector("#complaintsToggle");
+const complaintsToggleLabel = document.querySelector("#complaintsToggleLabel");
 const lessonsList = document.querySelector("#lessonsList");
 const lessonsCount = document.querySelector("#lessonsCount");
 const learnBtn = document.querySelector("#learnBtn");
@@ -40,6 +42,23 @@ function addMessage(role, text, extras = {}) {
       sourceList.appendChild(item);
     }
     node.appendChild(sourceList);
+  }
+
+  const complaints = extras.complaints ?? [];
+  if (complaints.length > 0) {
+    const complaintList = document.createElement("div");
+    complaintList.className = "complaints";
+    const complaintTitle = document.createElement("div");
+    complaintTitle.className = "complaintTitle";
+    complaintTitle.textContent = "Resident complaints:";
+    complaintList.appendChild(complaintTitle);
+    for (const complaint of complaints.slice(0, 5)) {
+      const item = document.createElement("div");
+      item.className = "complaintItem";
+      item.innerHTML = `<strong>${complaint.buildingName}</strong> [${complaint.category}]: ${complaint.description}`;
+      complaintList.appendChild(item);
+    }
+    node.appendChild(complaintList);
   }
 
   if (role === "assistant" && extras.chatId) {
@@ -215,6 +234,12 @@ lessonsToggle.addEventListener("change", () => {
   lessonsToggle.parentElement.classList.toggle("off", !on);
 });
 
+complaintsToggle.addEventListener("change", () => {
+  const on = complaintsToggle.checked;
+  complaintsToggleLabel.textContent = on ? "ON" : "OFF";
+  complaintsToggle.parentElement.classList.toggle("off", !on);
+});
+
 learnBtn.addEventListener("click", async () => {
   learnBtn.disabled = true;
   learnBtn.textContent = "Learning…";
@@ -247,7 +272,8 @@ form.addEventListener("submit", async (event) => {
       body: JSON.stringify({
         question: text,
         limit: 8,
-        useLessons: lessonsToggle.checked
+        useLessons: lessonsToggle.checked,
+        useComplaints: complaintsToggle.checked
       })
     });
 
@@ -258,6 +284,7 @@ form.addEventListener("submit", async (event) => {
       lastAppliedLessonIds = new Set((data.appliedLessons ?? []).map(l => l.id));
       addMessage("assistant", data.answer, {
         sources: data.sources ?? [],
+        complaints: data.complaints ?? [],
         chatId: data.chatId,
         topScore: data.topScore,
         avgScoreBaseline: data.avgScoreBaseline,

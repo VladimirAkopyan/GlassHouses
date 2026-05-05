@@ -4,7 +4,11 @@ VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{4D69D866-545D-4CA4-9860-2373CA962E59}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GmvAgent", "src\GmvAgent\GmvAgent.csproj", "{10D32FD2-451D-8DAC-6F12-54EFCEDDC010}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GmvAgent.Tests", "tests\GmvAgent.Tests\GmvAgent.Tests.csproj", "{22C8A917-319F-41C4-A080-B9BBEF3DC523}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -16,12 +20,16 @@ Global
 		{10D32FD2-451D-8DAC-6F12-54EFCEDDC010}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{10D32FD2-451D-8DAC-6F12-54EFCEDDC010}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{10D32FD2-451D-8DAC-6F12-54EFCEDDC010}.Release|Any CPU.Build.0 = Release|Any CPU
+		{22C8A917-319F-41C4-A080-B9BBEF3DC523}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{22C8A917-319F-41C4-A080-B9BBEF3DC523}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{22C8A917-319F-41C4-A080-B9BBEF3DC523}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{22C8A917-319F-41C4-A080-B9BBEF3DC523}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{10D32FD2-451D-8DAC-6F12-54EFCEDDC010} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{22C8A917-319F-41C4-A080-B9BBEF3DC523} = {4D69D866-545D-4CA4-9860-2373CA962E59}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {DAD8251F-C923-4D6F-8B8F-FA174B2270F8}

@@ -18,6 +18,7 @@ builder.Services.AddSingleton(AppSecrets.Load());
 builder.Services.AddSingleton<RetrievalService>();
 builder.Services.AddSingleton<ClaudeService>();
 builder.Services.AddSingleton<LessonsService>();
+builder.Services.AddSingleton<ComplaintsService>();
 
 var app = builder.Build();
 
@@ -44,7 +45,7 @@ app.MapGet("/api/map-entries", async (RetrievalService retrieval) =>
     return Results.Ok(points);
 });
 
-app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval, ClaudeService claude, LessonsService lessons) =>
+app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval, ClaudeService claude, LessonsService lessons, ComplaintsService complaints) =>
 {
     if (string.IsNullOrWhiteSpace(request.Question))
     {
@@ -52,6 +53,7 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
     }
 
     var useLessons = request.UseLessons ?? true;
+    var useComplaints = request.UseComplaints ?? true;
     var limit = request.Limit ?? 8;
 
     // Embed once; reuse for retrieval AND lesson lookup
@@ -102,7 +104,11 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
             : await retrieval.SearchAsync(request.Question, limit);
     }
 
-    var answer = await claude.AnswerAsync(request.Question, passages, relevantLessons);
+    var relevantComplaints = useComplaints
+        ? await complaints.SearchComplaintsAsync(request.Question, 5)
+        : Array.Empty<Complaint>();
+
+    var answer = await claude.AnswerAsync(request.Question, passages, relevantLessons, relevantComplaints);
 
     var avgBaseline = await lessons.GetAvgScoreWithoutLessonsAsync();
     var topScore = passages.Count > 0 ? passages.Max(p => p.Score) : 0.0;
@@ -138,7 +144,8 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
         TopScore: topScore,
         AvgScoreBaseline: avgBaseline,
         NewLesson: newLesson,
-        UsedLessonsMode: useLessons));
+        UsedLessonsMode: useLessons,
+        Complaints: relevantComplaints));
 });
 
 app.MapPost("/api/rate", async (RateRequest request, LessonsService lessons) =>
@@ -174,7 +181,7 @@ app.MapPost("/api/lessons/clear", async (LessonsService lessons) =>
 
 app.Run();
 
-public sealed record ChatRequest(string Question, int? Limit, bool? UseLessons);
+public sealed record ChatRequest(string Question, int? Limit, bool? UseLessons, bool? UseComplaints);
 public sealed record ChatResponse(
     string Answer,
     IReadOnlyList<RetrievedPassage> Sources,
@@ -183,7 +190,8 @@ public sealed record ChatResponse(
     double TopScore,
     double AvgScoreBaseline,
     LessonRecord? NewLesson,
-    bool UsedLessonsMode);
+    bool UsedLessonsMode,
+    IReadOnlyList<Complaint> Complaints);
 public sealed record RateRequest(string? ChatId, string? Rating);
 public sealed record MapEntry(
     string SourceId,
@@ -574,7 +582,8 @@ public sealed class ClaudeService
     public async Task<string> AnswerAsync(
         string question,
         IReadOnlyList<RetrievedPassage> passages,
-        IReadOnlyList<LessonRecord>? appliedLessons = null)
+        IReadOnlyList<LessonRecord>? appliedLessons = null,
+        IReadOnlyList<Complaint>? complaints = null)
     {
         if (string.IsNullOrWhiteSpace(_secrets.AnthropicApiKey))
         {
@@ -583,6 +592,7 @@ public sealed class ClaudeService
 
         var context = BuildContext(passages);
         var lessonsBlock = BuildLessonsBlock(appliedLessons);
+        var complaintsBlock = BuildComplaintsBlock(complaints);
         var userPrompt = $"""
         Question:
         {question}
@@ -591,7 +601,7 @@ public sealed class ClaudeService
         {context}
 
         Answer the question using only the retrieved evidence. If the evidence is thin or contradictory, say so plainly.
-        Cite sources inline using [source_id#chunk_index] after the sentence they support.
+        Cite sources inline using [source_id#chunk_index] after the sentence they support.{complaintsBlock}
         """;
 
         var systemPrompt = "You are a careful due-diligence assistant for Greenwich Millennium Village. You answer from retrieved source chunks, distinguish evidence from inference, and avoid legal or financial advice."
@@ -642,6 +652,21 @@ public sealed class ClaudeService
             sb.AppendLine();
         }
 
+        return sb.ToString();
+    }
+
+    private static string BuildComplaintsBlock(IReadOnlyList<Complaint>? complaints)
+    {
+        if (complaints is null || complaints.Count == 0) return "";
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.AppendLine("---");
+        sb.AppendLine("Related resident complaints from the housing management system:");
+        foreach (var c in complaints)
+        {
+            sb.AppendLine($"- [{c.BuildingName}] {c.Category}: {c.Description}");
+        }
         return sb.ToString();
     }
 

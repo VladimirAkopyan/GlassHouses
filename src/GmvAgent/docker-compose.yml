@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8087:80"
     environment:
       MONGODB_CONNECTION_STRING: ${MONGODB_CONNECTION_STRING}
       MONGODB_DATABASE: ${MONGODB_DATABASE:-agent_memory}
