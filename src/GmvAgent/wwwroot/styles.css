@@ -47,7 +47,7 @@ body {
 
 .hero {
   position: relative;
-  min-height: 430px;
+  min-height: 280px;
   overflow: hidden;
   background: #111;
   display: grid;
@@ -471,7 +471,7 @@ button:disabled {
   color: var(--muted);
 }
 .leafletMap {
-  height: 360px;
+  height: 500px;
   border-radius: 10px;
   border: 1px solid var(--line);
   overflow: hidden;
@@ -493,6 +493,14 @@ button:disabled {
   margin: 0;
   padding-left: 18px;
   color: var(--muted);
+}
+.exampleQuestions li a.exampleQ {
+  color: var(--accent, #3a6ea5);
+  text-decoration: none;
+  cursor: pointer;
+}
+.exampleQuestions li a.exampleQ:hover {
+  text-decoration: underline;
 }
 .exampleQuestions li {
   margin: 6px 0;
