@@ -11,4 +11,12 @@
     <PackageReference Include="MongoDB.Driver" Version="3.1.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Ship the building registry alongside the binary so BuildingRegistry can find it
+         in both `dotnet run` and Docker/published environments. -->
+    <Content Include="gmv_buildings_postcodes.csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

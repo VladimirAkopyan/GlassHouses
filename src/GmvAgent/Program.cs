@@ -9,6 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton(AppSecrets.Load());
+builder.Services.AddSingleton<BuildingRegistry>();
 builder.Services.AddSingleton<RetrievalService>();
 builder.Services.AddSingleton<ClaudeService>();
 builder.Services.AddSingleton<LessonsService>();
@@ -73,7 +74,7 @@ app.MapGet("/api/source/{filename}", (string filename) =>
     return Results.File(found, contentType, fileDownloadName: null, enableRangeProcessing: true);
 });
 
-app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval, ClaudeService claude, LessonsService lessons) =>
+app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval, ClaudeService claude, LessonsService lessons, BuildingRegistry buildings) =>
 {
     if (string.IsNullOrWhiteSpace(request.Question))
     {
@@ -82,6 +83,12 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
 
     var useLessons = request.UseLessons ?? true;
     var limit = request.Limit ?? 8;
+
+    // Detect named GMV buildings in the user's question. If found, every retrieval below
+    // is scoped to chunks that mention one of those buildings (via the `buildings` array
+    // populated at ingestion time). Lets "tell me about Etherington Lodge" actually return
+    // Etherington-specific evidence rather than blending across all 40 buildings.
+    var detectedBuildings = buildings.Detect(request.Question);
 
     // Embed the question once for lesson lookup. Retrieval embeddings are produced
     // per-query inside the agentic loop (Claude generates the queries, we embed each).
@@ -101,16 +108,24 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
 
     // Agentic retrieval loop. Each search Claude issues:
     //   1. Embed the query Claude wrote (input_type=query)
-    //   2. Run hybrid search (vector + keyword RRF) with optional source_type filter
+    //   2. Run hybrid search (vector + keyword RRF) with source_type + building filters
     //   3. Apply relevance floor (≥0.5 vector OR ≤3 keyword rank, fallback to top 2)
-    // Claude reformulates if results are weak; stops once it has enough evidence.
+    // The building filter is fixed per request (detected from the user's question, not
+    // changeable by Claude) so every reformulation stays scoped to the right building(s).
+    var buildingFilter = detectedBuildings.Count > 0 ? detectedBuildings : null;
     Func<string, IReadOnlyList<string>?, Task<IReadOnlyList<RetrievedPassage>>> searchTool =
         async (query, sourceTypes) =>
         {
             try
             {
                 var emb = await lessons.EmbedTextAsync(query, "query");
-                var hits = await retrieval.HybridSearchAsync(query, emb, limit, sourceTypes);
+                var hits = await retrieval.HybridSearchAsync(query, emb, limit, sourceTypes, buildingFilter);
+                if (hits.Count == 0 && buildingFilter is not null)
+                {
+                    // The building filter starved the results — fall back without it so the
+                    // user gets *something* (Claude can still note the building wasn't found).
+                    hits = await retrieval.HybridSearchAsync(query, emb, limit, sourceTypes);
+                }
                 return ApplyRelevanceFloor(hits);
             }
             catch
@@ -147,7 +162,8 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
         NewLesson: (LessonRecord?)null,
         UsedLessonsMode: useLessons,
         SearchQueries: agentic.SearchQueries,
-        PrimaryLocation: primaryLocation));
+        PrimaryLocation: primaryLocation,
+        DetectedBuildings: detectedBuildings));
 });
 
 static IReadOnlyList<RetrievedPassage> ApplyRelevanceFloor(IReadOnlyList<RetrievedPassage> hits)
@@ -212,7 +228,8 @@ public sealed record ChatResponse(
     LessonRecord? NewLesson,
     bool UsedLessonsMode,
     IReadOnlyList<string> SearchQueries,
-    PlaceInfo? PrimaryLocation);
+    PlaceInfo? PrimaryLocation,
+    IReadOnlyList<string> DetectedBuildings);
 
 public sealed record PlaceInfo(string Name, double Lat, double Lng, string Label);
 
@@ -413,13 +430,14 @@ public sealed class RetrievalService
         string questionText,
         IReadOnlyList<double> queryVector,
         int limit,
-        IReadOnlyCollection<string>? sourceTypes = null)
+        IReadOnlyCollection<string>? sourceTypes = null,
+        IReadOnlyCollection<string>? buildings = null)
     {
         limit = Math.Clamp(limit, 3, 15);
         var oversample = limit * 2;
 
-        var vectorTask = VectorSearchAsync(queryVector, oversample, sourceTypes);
-        var keywordTask = TryKeywordSearchAsync(questionText, oversample);
+        var vectorTask = VectorSearchAsync(queryVector, oversample, sourceTypes, buildings);
+        var keywordTask = TryKeywordSearchAsync(questionText, oversample, buildings);
         await Task.WhenAll(vectorTask, keywordTask);
 
         var vectorResults = vectorTask.Result;
@@ -463,11 +481,12 @@ public sealed class RetrievalService
             .ToList();
     }
 
-    private async Task<IReadOnlyList<RetrievedPassage>> TryKeywordSearchAsync(string question, int limit)
+    private async Task<IReadOnlyList<RetrievedPassage>> TryKeywordSearchAsync(
+        string question, int limit, IReadOnlyCollection<string>? buildings = null)
     {
         try
         {
-            return await KeywordSearchAsync(question, limit);
+            return await KeywordSearchAsync(question, limit, buildings);
         }
         catch
         {
@@ -525,7 +544,10 @@ public sealed class RetrievalService
     }
 
     private async Task<IReadOnlyList<RetrievedPassage>> VectorSearchAsync(
-        IReadOnlyList<double> queryVector, int limit, IReadOnlyCollection<string>? sourceTypes = null)
+        IReadOnlyList<double> queryVector,
+        int limit,
+        IReadOnlyCollection<string>? sourceTypes = null,
+        IReadOnlyCollection<string>? buildings = null)
     {
         var vector = new BsonArray(queryVector.Select(value => new BsonDouble(value)));
         var vectorSearch = new BsonDocument
@@ -540,12 +562,21 @@ public sealed class RetrievalService
         var filterClauses = new BsonArray();
         if (!string.IsNullOrWhiteSpace(_secrets.BuildingId))
         {
-            filterClauses.Add(new BsonDocument("building_id", _secrets.BuildingId));
+            // Schema v2: every chunk has development_id="gmv". building_id is now the
+            // specific building (e.g. "farnsworth_court") or DEVELOPMENT_WIDE / LBSM_UNMAPPED
+            // sentinels. The chatbot's top-level filter is the development.
+            filterClauses.Add(new BsonDocument("development_id", _secrets.BuildingId));
         }
         if (sourceTypes is { Count: > 0 })
         {
             filterClauses.Add(new BsonDocument("source_type",
                 new BsonDocument("$in", new BsonArray(sourceTypes))));
+        }
+        if (buildings is { Count: > 0 })
+        {
+            // Match chunks where any of the named buildings appears in the buildings array.
+            filterClauses.Add(new BsonDocument("buildings",
+                new BsonDocument("$in", new BsonArray(buildings))));
         }
         if (filterClauses.Count == 1)
         {
@@ -574,14 +605,20 @@ public sealed class RetrievalService
         return docs.Select(ToPassage).ToList();
     }
 
-    private async Task<IReadOnlyList<RetrievedPassage>> KeywordSearchAsync(string question, int limit)
+    private async Task<IReadOnlyList<RetrievedPassage>> KeywordSearchAsync(
+        string question, int limit, IReadOnlyCollection<string>? buildings = null)
     {
-        // building_id filter is applied here to mirror the vector path; without it we'd
-        // surface chunks from other buildings if the corpus ever grows beyond gmv.
+        // development_id filter mirrors the vector path; without it we'd surface chunks
+        // from other developments if the corpus ever grows beyond gmv.
         var clauses = new BsonArray { new BsonDocument("$text", new BsonDocument("$search", question)) };
         if (!string.IsNullOrWhiteSpace(_secrets.BuildingId))
         {
-            clauses.Add(new BsonDocument("building_id", _secrets.BuildingId));
+            clauses.Add(new BsonDocument("development_id", _secrets.BuildingId));
+        }
+        if (buildings is { Count: > 0 })
+        {
+            clauses.Add(new BsonDocument("buildings",
+                new BsonDocument("$in", new BsonArray(buildings))));
         }
         var filter = clauses.Count == 1 ? clauses[0].AsBsonDocument : new BsonDocument("$and", clauses);
 
@@ -837,7 +874,7 @@ public sealed class ClaudeService
     private static string BuildAgenticSystemPrompt(IReadOnlyList<LessonRecord>? lessons)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("You are a careful due-diligence assistant for Greenwich Millennium Village (a London apartment development, building_id \"gmv\"). You answer questions for building service providers using a corpus of documents about this development.");
+        sb.AppendLine("You are a careful due-diligence assistant for Greenwich Millennium Village (a London apartment development, development_id \"gmv\"). The development contains 40 named buildings split between GMV West and GMV East; each chunk you retrieve has a building_id (a slug like \"farnsworth_court\" or \"holly_court\") and a primary_building name, plus a buildings array listing every named building mentioned in the chunk. When the user asks about a specific building, name it explicitly in your answer. You answer questions for building service providers using a corpus of documents about this development.");
         sb.AppendLine();
         sb.AppendLine("Corpus contents: leases, Companies House filings, forum threads, sales data, notes. The corpus references specific buildings (Holly Court, Farnsworth Court, etc.) and uses terms like \"GMV\" or \"Greenwich Millennium Village\" — it never uses the phrase \"Glass Houses\" even though users may ask that way.");
         sb.AppendLine();

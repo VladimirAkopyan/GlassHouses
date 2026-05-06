@@ -93,7 +93,7 @@ public sealed class LessonsService
                 var embedding = await EmbedTextAsync(seed.QuestionPattern, "query");
                 var doc = new BsonDocument
                 {
-                    ["building_id"] = _secrets.BuildingId,
+                    ["development_id"] = _secrets.BuildingId,
                     ["question_pattern"] = seed.QuestionPattern,
                     ["question_pattern_embedding"] = new BsonArray(embedding.Select(v => (BsonValue)new BsonDouble(v))),
                     ["lesson_text"] = seed.LessonText,
@@ -145,7 +145,7 @@ public sealed class LessonsService
                     new BsonDocument
                     {
                         ["type"] = "filter",
-                        ["path"] = "building_id"
+                        ["path"] = "development_id"
                     }
                 }
             };
@@ -173,7 +173,7 @@ public sealed class LessonsService
         var topScore = passages.Count > 0 ? passages.Max(p => p.Score) : 0.0;
         var doc = new BsonDocument
         {
-            ["building_id"] = _secrets.BuildingId,
+            ["development_id"] = _secrets.BuildingId,
             ["question"] = question,
             ["question_embedding"] = questionEmbedding is null
                 ? BsonNull.Value
@@ -263,7 +263,7 @@ public sealed class LessonsService
         };
         if (!string.IsNullOrWhiteSpace(_secrets.BuildingId))
         {
-            vectorSearch["filter"] = new BsonDocument("building_id", _secrets.BuildingId);
+            vectorSearch["filter"] = new BsonDocument("development_id", _secrets.BuildingId);
         }
 
         var pipeline = new[]
@@ -379,7 +379,7 @@ public sealed class LessonsService
         var patternEmbedding = await EmbedTextAsync(extracted.QuestionPattern, "query");
         var lessonDoc = new BsonDocument
         {
-            ["building_id"] = _secrets.BuildingId,
+            ["development_id"] = _secrets.BuildingId,
             ["question_pattern"] = extracted.QuestionPattern,
             ["question_pattern_embedding"] = new BsonArray(patternEmbedding.Select(v => (BsonValue)new BsonDouble(v))),
             ["lesson_text"] = extracted.LessonText,
