@@ -1,28 +1,27 @@
-using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using DotNetEnv;
-
-DotNetEnv.Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.Logging.AddConsole();
 
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton(AppSecrets.Load());
 builder.Services.AddSingleton<RetrievalService>();
 builder.Services.AddSingleton<ClaudeService>();
 builder.Services.AddSingleton<LessonsService>();
-builder.Services.AddSingleton<ComplaintsService>();
 
 var app = builder.Build();
 
-app.Logger.LogInformation("Starting app");
+// Make sure the keyword text index exists so hybrid search has a keyword side. No-op if present.
+_ = app.Services.GetRequiredService<RetrievalService>().EnsureKeywordIndexAsync();
+// Best-effort: create the Atlas vector index on lessons. If creation fails or the index isn't
+// ready yet, lesson lookup degrades to in-memory cosine until Atlas finishes building it.
+_ = app.Services.GetRequiredService<LessonsService>().EnsureLessonsVectorIndexAsync();
+// Seed curated lessons (e.g. risk-report format) so they survive lesson wipes.
+_ = app.Services.GetRequiredService<LessonsService>().EnsureSeededLessonsAsync();
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -39,13 +38,42 @@ app.MapGet("/api/health", async (RetrievalService retrieval, AppSecrets secrets)
     });
 });
 
-app.MapGet("/api/map-entries", async (RetrievalService retrieval) =>
+// Serve original source documents so citations can hyperlink directly to the file.
+// Walks up from the running binary to find the Findings-gmv directory; matches on basename
+// only and uses Path.GetFileName to defuse any path-traversal attempts in the URL.
+app.MapGet("/api/source/{filename}", (string filename) =>
 {
-    var points = await retrieval.GetMapPointsAsync();
-    return Results.Ok(points);
+    var safe = Path.GetFileName(filename);
+    if (string.IsNullOrWhiteSpace(safe)) return Results.BadRequest();
+
+    var dir = new DirectoryInfo(AppContext.BaseDirectory);
+    string? root = null;
+    while (dir is not null)
+    {
+        var candidate = Path.Combine(dir.FullName, "Findings-gmv");
+        if (Directory.Exists(candidate)) { root = candidate; break; }
+        dir = dir.Parent;
+    }
+    if (root is null) return Results.NotFound(new { error = "Findings-gmv directory not found on server." });
+
+    var found = Directory.EnumerateFiles(root, safe, SearchOption.AllDirectories).FirstOrDefault();
+    if (found is null) return Results.NotFound(new { error = $"File not found: {safe}" });
+
+    var ext = Path.GetExtension(found).ToLowerInvariant();
+    var contentType = ext switch
+    {
+        ".pdf"  => "application/pdf",
+        ".html" => "text/html; charset=utf-8",
+        ".md"   => "text/markdown; charset=utf-8",
+        ".csv"  => "text/csv; charset=utf-8",
+        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".txt"  => "text/plain; charset=utf-8",
+        _       => "application/octet-stream"
+    };
+    return Results.File(found, contentType, fileDownloadName: null, enableRangeProcessing: true);
 });
 
-app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval, ClaudeService claude, LessonsService lessons, ComplaintsService complaints) =>
+app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval, ClaudeService claude, LessonsService lessons) =>
 {
     if (string.IsNullOrWhiteSpace(request.Question))
     {
@@ -53,10 +81,10 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
     }
 
     var useLessons = request.UseLessons ?? true;
-    var useComplaints = request.UseComplaints ?? true;
     var limit = request.Limit ?? 8;
 
-    // Embed once; reuse for retrieval AND lesson lookup
+    // Embed the question once for lesson lookup. Retrieval embeddings are produced
+    // per-query inside the agentic loop (Claude generates the queries, we embed each).
     IReadOnlyList<double>? queryEmbedding = null;
     try
     {
@@ -64,51 +92,36 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
     }
     catch
     {
-        // If embedding fails, retrieval will fall back to keyword search and lessons stay empty
+        // Lesson lookup degrades gracefully — agentic search still works without it.
     }
 
-    // Pull relevant lessons (or skip if toggle off)
     IReadOnlyList<LessonRecord> relevantLessons = useLessons && queryEmbedding is not null
         ? await lessons.GetRelevantLessonsAsync(queryEmbedding)
         : Array.Empty<LessonRecord>();
 
-    // Apply lessons to query: append suggested terms
-    var augmentedQuestion = request.Question;
-    if (relevantLessons.Count > 0)
-    {
-        var extraTerms = relevantLessons
-            .SelectMany(l => l.SuggestedQueryTerms)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(8);
-        augmentedQuestion = $"{request.Question} {string.Join(" ", extraTerms)}".Trim();
-    }
-
-    // Re-embed the augmented question for retrieval (so lesson terms actually shift the vector)
-    IReadOnlyList<RetrievedPassage> passages;
-    if (relevantLessons.Count > 0 && queryEmbedding is not null)
-    {
-        try
+    // Agentic retrieval loop. Each search Claude issues:
+    //   1. Embed the query Claude wrote (input_type=query)
+    //   2. Run hybrid search (vector + keyword RRF) with optional source_type filter
+    //   3. Apply relevance floor (≥0.5 vector OR ≤3 keyword rank, fallback to top 2)
+    // Claude reformulates if results are weak; stops once it has enough evidence.
+    Func<string, IReadOnlyList<string>?, Task<IReadOnlyList<RetrievedPassage>>> searchTool =
+        async (query, sourceTypes) =>
         {
-            var augmentedEmbedding = await lessons.EmbedTextAsync(augmentedQuestion, "query");
-            passages = await retrieval.SearchWithEmbeddingAsync(augmentedEmbedding, limit);
-        }
-        catch
-        {
-            passages = await retrieval.SearchAsync(request.Question, limit);
-        }
-    }
-    else
-    {
-        passages = queryEmbedding is not null
-            ? await retrieval.SearchWithEmbeddingAsync(queryEmbedding, limit)
-            : await retrieval.SearchAsync(request.Question, limit);
-    }
+            try
+            {
+                var emb = await lessons.EmbedTextAsync(query, "query");
+                var hits = await retrieval.HybridSearchAsync(query, emb, limit, sourceTypes);
+                return ApplyRelevanceFloor(hits);
+            }
+            catch
+            {
+                return Array.Empty<RetrievedPassage>();
+            }
+        };
 
-    var relevantComplaints = useComplaints
-        ? await complaints.SearchComplaintsAsync(request.Question, 5)
-        : Array.Empty<Complaint>();
-
-    var answer = await claude.AnswerAsync(request.Question, passages, relevantLessons, relevantComplaints);
+    var agentic = await claude.AnswerWithToolsAsync(request.Question, relevantLessons, searchTool);
+    var passages = agentic.Passages;
+    var answer = agentic.Answer;
 
     var avgBaseline = await lessons.GetAvgScoreWithoutLessonsAsync();
     var topScore = passages.Count > 0 ? passages.Max(p => p.Score) : 0.0;
@@ -119,22 +132,10 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
 
     if (relevantLessons.Count > 0)
     {
-        // fire-and-forget: bump usage stats
         _ = lessons.RecordLessonApplicationsAsync(appliedIds, topScore);
     }
 
-    // Auto-reflect (background, fire-and-forget) so the UI doesn't wait
-    LessonRecord? newLesson = null;
-    try
-    {
-        // We do this synchronously for the demo so the toast can be returned —
-        // hackathon UX > production hygiene. Comment out for fully async behavior.
-        newLesson = await lessons.ReflectAndStoreLessonAsync(chatId);
-    }
-    catch
-    {
-        // reflection failures should never break the chat
-    }
+    var primaryLocation = GmvPlaces.FindPrimary(request.Question, agentic.SearchQueries, answer);
 
     return Results.Ok(new ChatResponse(
         Answer: answer,
@@ -143,22 +144,41 @@ app.MapPost("/api/chat", async (ChatRequest request, RetrievalService retrieval,
         AppliedLessons: relevantLessons,
         TopScore: topScore,
         AvgScoreBaseline: avgBaseline,
-        NewLesson: newLesson,
+        NewLesson: (LessonRecord?)null,
         UsedLessonsMode: useLessons,
-        Complaints: relevantComplaints));
+        SearchQueries: agentic.SearchQueries,
+        PrimaryLocation: primaryLocation));
 });
+
+static IReadOnlyList<RetrievedPassage> ApplyRelevanceFloor(IReadOnlyList<RetrievedPassage> hits)
+{
+    const double minVectorScore = 0.5;
+    const int maxKeywordRank = 3;
+    var filtered = hits.Where(p =>
+        (p.VectorScore.HasValue && p.VectorScore.Value >= minVectorScore) ||
+        (p.KeywordRank.HasValue && p.KeywordRank.Value <= maxKeywordRank)
+    ).ToList();
+    if (filtered.Count < 2 && hits.Count > 0)
+    {
+        filtered = hits.Take(Math.Min(2, hits.Count)).ToList();
+    }
+    return filtered;
+}
 
 app.MapPost("/api/rate", async (RateRequest request, LessonsService lessons) =>
 {
-    var ok = await lessons.RateChatAsync(request.ChatId ?? "", request.Rating ?? "");
-    if (!ok) return Results.BadRequest(new { error = "Invalid chat_id or rating (use 'up' or 'down')." });
-    // If thumbs-up, try reflecting again now that we have a positive signal
-    if (request.Rating == "up")
+    if (string.IsNullOrWhiteSpace(request.ChatId))
     {
-        var lesson = await lessons.ReflectAndStoreLessonAsync(request.ChatId!);
-        return Results.Ok(new { ok = true, newLesson = lesson });
+        return Results.BadRequest(new { error = "chat_id is required." });
     }
-    return Results.Ok(new { ok = true, newLesson = (LessonRecord?)null });
+    if (request.Rating is null || request.Rating < 1 || request.Rating > 5)
+    {
+        return Results.BadRequest(new { error = "rating (1-5) is required." });
+    }
+    var ok = await lessons.SaveFeedbackAsync(request.ChatId, request.Rating.Value, request.Feedback);
+    if (!ok) return Results.BadRequest(new { error = "Invalid chat_id or rating." });
+    var lesson = await lessons.ReflectAndStoreLessonAsync(request.ChatId);
+    return Results.Ok(new { ok = true, newLesson = lesson });
 });
 
 app.MapGet("/api/lessons", async (LessonsService lessons) =>
@@ -181,7 +201,7 @@ app.MapPost("/api/lessons/clear", async (LessonsService lessons) =>
 
 app.Run();
 
-public sealed record ChatRequest(string Question, int? Limit, bool? UseLessons, bool? UseComplaints);
+public sealed record ChatRequest(string Question, int? Limit, bool? UseLessons);
 public sealed record ChatResponse(
     string Answer,
     IReadOnlyList<RetrievedPassage> Sources,
@@ -191,16 +211,50 @@ public sealed record ChatResponse(
     double AvgScoreBaseline,
     LessonRecord? NewLesson,
     bool UsedLessonsMode,
-    IReadOnlyList<Complaint> Complaints);
-public sealed record RateRequest(string? ChatId, string? Rating);
-public sealed record MapEntry(
-    string SourceId,
-    string? SourceType,
-    int ChunkIndex,
-    string? Filename,
-    int? Page,
-    double? Latitude,
-    double? Longitude);
+    IReadOnlyList<string> SearchQueries,
+    PlaceInfo? PrimaryLocation);
+
+public sealed record PlaceInfo(string Name, double Lat, double Lng, string Label);
+
+// Approximate coordinates for known places mentioned in GMV chats. Sub-building positions
+// are best-effort eyeballed within the development; the OpenStreetMap base layer makes
+// this visually grounded enough for a demo without needing surveyed accuracy.
+public static class GmvPlaces
+{
+    private static readonly (string Name, double Lat, double Lng, string Label)[] Known =
+    {
+        ("Holly Court",                  51.4960, 0.0085, "Holly Court, GMV"),
+        ("Farnsworth Court",             51.4980, 0.0070, "Farnsworth Court, GMV"),
+        ("Renaissance Walk",             51.4965, 0.0090, "Renaissance Walk, GMV"),
+        ("Greenwich Millennium Village", 51.4970, 0.0080, "Greenwich Millennium Village"),
+        ("GMV",                          51.4970, 0.0080, "Greenwich Millennium Village"),
+        ("Greenwich Peninsula",          51.5000, 0.0050, "Greenwich Peninsula"),
+        ("Greenwich",                    51.4826, 0.0077, "Greenwich (London Borough)")
+    };
+
+    // Picks the most specific (longest-name) match across the question, search queries, and answer.
+    // Heavy weight on the user's question — that's the topic anchor, even if the answer drifts.
+    public static PlaceInfo? FindPrimary(string question, IReadOnlyList<string> queries, string answer)
+    {
+        var allText = $"{question}\n{string.Join("\n", queries)}\n{answer}".ToLowerInvariant();
+        var questionLower = question.ToLowerInvariant();
+
+        // Longest first → "Holly Court" beats "Greenwich"; "Greenwich Millennium Village" beats "Greenwich".
+        foreach (var p in Known.OrderByDescending(p => p.Name.Length))
+        {
+            var needle = p.Name.ToLowerInvariant();
+            if (questionLower.Contains(needle)) return new PlaceInfo(p.Name, p.Lat, p.Lng, p.Label);
+        }
+        foreach (var p in Known.OrderByDescending(p => p.Name.Length))
+        {
+            var needle = p.Name.ToLowerInvariant();
+            if (allText.Contains(needle)) return new PlaceInfo(p.Name, p.Lat, p.Lng, p.Label);
+        }
+        return null;
+    }
+}
+public sealed record RateRequest(string? ChatId, int? Rating, string? Feedback);
+
 public sealed record RetrievedPassage(
     string SourceId,
     string? SourceType,
@@ -208,7 +262,10 @@ public sealed record RetrievedPassage(
     string? Filename,
     int? Page,
     double Score,
-    string Text);
+    string Text,
+    double? VectorScore = null,
+    int? KeywordRank = null,
+    double RrfScore = 0.0);
 
 public sealed class AppSecrets
 {
@@ -317,28 +374,6 @@ public sealed class RetrievalService
         };
     }
 
-    public async Task<IReadOnlyList<MapEntry>> GetMapPointsAsync()
-    {
-        var filter = string.IsNullOrWhiteSpace(_secrets.BuildingId)
-            ? FilterDefinition<BsonDocument>.Empty
-            : Builders<BsonDocument>.Filter.Eq("building_id", _secrets.BuildingId);
-
-        var projection = Builders<BsonDocument>.Projection
-            .Include("source_id")
-            .Include("source_type")
-            .Include("chunk_index")
-            .Include("metadata");
-
-        var docs = await _documents.Find(filter)
-            .Project(projection)
-            .ToListAsync();
-
-        return docs
-            .Select(ToMapEntry)
-            .Where(entry => entry.Latitude.HasValue && entry.Longitude.HasValue)
-            .ToList();
-    }
-
     public async Task<IReadOnlyList<RetrievedPassage>> SearchAsync(string question, int limit)
     {
         limit = Math.Clamp(limit, 3, 15);
@@ -359,10 +394,105 @@ public sealed class RetrievalService
         return await KeywordSearchAsync(question, limit);
     }
 
-    public async Task<IReadOnlyList<RetrievedPassage>> SearchWithEmbeddingAsync(IReadOnlyList<double> queryVector, int limit)
+    public async Task<IReadOnlyList<RetrievedPassage>> SearchWithEmbeddingAsync(
+        IReadOnlyList<double> queryVector, int limit, IReadOnlyCollection<string>? sourceTypes = null)
     {
         limit = Math.Clamp(limit, 3, 15);
-        return await VectorSearchAsync(queryVector, limit);
+        return await VectorSearchAsync(queryVector, limit, sourceTypes);
+    }
+
+    // Hybrid retrieval: vector + keyword fused with Reciprocal Rank Fusion (RRF, k=60).
+    // Each side oversamples (limit*2) so the fusion has room to surface chunks that one
+    // method missed. Returns up to `limit` passages sorted by RrfScore. Each passage carries:
+    //  - VectorScore: original cosine score from Atlas if found via vector (else null)
+    //  - KeywordRank: 1-indexed rank in keyword results if found there (else null)
+    //  - Score:       VectorScore when available, else 0.0 (drives the existing UI / topScore metric)
+    //  - RrfScore:    fused rank score used for sorting/merging across pipelines
+    // If keyword search fails (e.g. no $text index), degrades to vector-only.
+    public async Task<IReadOnlyList<RetrievedPassage>> HybridSearchAsync(
+        string questionText,
+        IReadOnlyList<double> queryVector,
+        int limit,
+        IReadOnlyCollection<string>? sourceTypes = null)
+    {
+        limit = Math.Clamp(limit, 3, 15);
+        var oversample = limit * 2;
+
+        var vectorTask = VectorSearchAsync(queryVector, oversample, sourceTypes);
+        var keywordTask = TryKeywordSearchAsync(questionText, oversample);
+        await Task.WhenAll(vectorTask, keywordTask);
+
+        var vectorResults = vectorTask.Result;
+        var keywordResults = keywordTask.Result;
+
+        const double k = 60.0;
+        var fused = new Dictionary<string, (RetrievedPassage passage, double rrf, double? vScore, int? kRank)>();
+
+        for (int i = 0; i < vectorResults.Count; i++)
+        {
+            var p = vectorResults[i];
+            var key = $"{p.SourceId}#{p.ChunkIndex}";
+            var rrf = 1.0 / (k + (i + 1));
+            fused[key] = (p, rrf, p.Score, null);
+        }
+        for (int i = 0; i < keywordResults.Count; i++)
+        {
+            var p = keywordResults[i];
+            var key = $"{p.SourceId}#{p.ChunkIndex}";
+            var rrf = 1.0 / (k + (i + 1));
+            if (fused.TryGetValue(key, out var existing))
+            {
+                fused[key] = (existing.passage, existing.rrf + rrf, existing.vScore, i + 1);
+            }
+            else
+            {
+                fused[key] = (p, rrf, null, i + 1);
+            }
+        }
+
+        return fused.Values
+            .OrderByDescending(x => x.rrf)
+            .Take(limit)
+            .Select(x => x.passage with
+            {
+                Score = x.vScore ?? 0.0,
+                VectorScore = x.vScore,
+                KeywordRank = x.kRank,
+                RrfScore = x.rrf
+            })
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<RetrievedPassage>> TryKeywordSearchAsync(string question, int limit)
+    {
+        try
+        {
+            return await KeywordSearchAsync(question, limit);
+        }
+        catch
+        {
+            // Most likely: no $text index on the collection. Hybrid degrades to vector-only.
+            return Array.Empty<RetrievedPassage>();
+        }
+    }
+
+    public async Task EnsureKeywordIndexAsync()
+    {
+        try
+        {
+            var existing = await _documents.Indexes.ListAsync();
+            var indexes = await existing.ToListAsync();
+            if (indexes.Any(ix => ix.GetValue("name", "").AsString == "chunk_text_text")) return;
+
+            var keys = new BsonDocument("chunk_text", "text");
+            var options = new CreateIndexOptions<BsonDocument> { Name = "chunk_text_text" };
+            var model = new CreateIndexModel<BsonDocument>(keys, options);
+            await _documents.Indexes.CreateOneAsync(model);
+        }
+        catch
+        {
+            // Non-fatal — hybrid search degrades to vector-only.
+        }
     }
 
     private async Task<IReadOnlyList<double>> EmbedQueryAsync(string question)
@@ -394,7 +524,8 @@ public sealed class RetrievalService
         return embedding;
     }
 
-    private async Task<IReadOnlyList<RetrievedPassage>> VectorSearchAsync(IReadOnlyList<double> queryVector, int limit)
+    private async Task<IReadOnlyList<RetrievedPassage>> VectorSearchAsync(
+        IReadOnlyList<double> queryVector, int limit, IReadOnlyCollection<string>? sourceTypes = null)
     {
         var vector = new BsonArray(queryVector.Select(value => new BsonDouble(value)));
         var vectorSearch = new BsonDocument
@@ -406,9 +537,23 @@ public sealed class RetrievalService
             ["limit"] = limit
         };
 
+        var filterClauses = new BsonArray();
         if (!string.IsNullOrWhiteSpace(_secrets.BuildingId))
         {
-            vectorSearch["filter"] = new BsonDocument("building_id", _secrets.BuildingId);
+            filterClauses.Add(new BsonDocument("building_id", _secrets.BuildingId));
+        }
+        if (sourceTypes is { Count: > 0 })
+        {
+            filterClauses.Add(new BsonDocument("source_type",
+                new BsonDocument("$in", new BsonArray(sourceTypes))));
+        }
+        if (filterClauses.Count == 1)
+        {
+            vectorSearch["filter"] = filterClauses[0].AsBsonDocument;
+        }
+        else if (filterClauses.Count > 1)
+        {
+            vectorSearch["filter"] = new BsonDocument("$and", filterClauses);
         }
 
         var pipeline = new[]
@@ -431,7 +576,15 @@ public sealed class RetrievalService
 
     private async Task<IReadOnlyList<RetrievedPassage>> KeywordSearchAsync(string question, int limit)
     {
-        var filter = new BsonDocument("$text", new BsonDocument("$search", question));
+        // building_id filter is applied here to mirror the vector path; without it we'd
+        // surface chunks from other buildings if the corpus ever grows beyond gmv.
+        var clauses = new BsonArray { new BsonDocument("$text", new BsonDocument("$search", question)) };
+        if (!string.IsNullOrWhiteSpace(_secrets.BuildingId))
+        {
+            clauses.Add(new BsonDocument("building_id", _secrets.BuildingId));
+        }
+        var filter = clauses.Count == 1 ? clauses[0].AsBsonDocument : new BsonDocument("$and", clauses);
+
         var projection = new BsonDocument
         {
             ["source_id"] = 1,
@@ -451,106 +604,6 @@ public sealed class RetrievalService
         return docs.Select(ToPassage).ToList();
     }
 
-    private static MapEntry ToMapEntry(BsonDocument doc)
-    {
-        var metadata = doc.GetValue("metadata", new BsonDocument()).AsBsonDocument;
-        var pageValue = metadata.GetValue("page", BsonNull.Value);
-        int? page = pageValue.IsBsonNull ? null : pageValue.ToInt32();
-
-        var latitude = ExtractCoordinate(metadata, "latitude", "lat", "location.latitude", "location.lat");
-        var longitude = ExtractCoordinate(metadata, "longitude", "lng", "lon", "location.longitude", "location.lng");
-
-        if (!latitude.HasValue || !longitude.HasValue)
-        {
-            var arrayCoords = GetCoordinatesFromArray(metadata, "coordinates", "location.coordinates");
-            if (arrayCoords.latitude.HasValue && arrayCoords.longitude.HasValue)
-            {
-                latitude = latitude ?? arrayCoords.latitude;
-                longitude = longitude ?? arrayCoords.longitude;
-            }
-        }
-
-        return new MapEntry(
-            SourceId: doc.GetValue("source_id", "").AsString,
-            SourceType: doc.GetValue("source_type", BsonNull.Value).IsBsonNull ? null : doc.GetValue("source_type").AsString,
-            ChunkIndex: doc.GetValue("chunk_index", 0).ToInt32(),
-            Filename: metadata.GetValue("filename", BsonNull.Value).IsBsonNull ? null : metadata.GetValue("filename").AsString,
-            Page: page,
-            Latitude: latitude,
-            Longitude: longitude);
-    }
-
-    private static double? ExtractCoordinate(BsonDocument metadata, params string[] paths)
-    {
-        foreach (var path in paths)
-        {
-            if (TryGetValue(metadata, path, out var value) && ParseCoordinate(value) is double parsed)
-            {
-                return parsed;
-            }
-        }
-
-        return null;
-    }
-
-    private static (double? latitude, double? longitude) GetCoordinatesFromArray(BsonDocument metadata, params string[] paths)
-    {
-        foreach (var path in paths)
-        {
-            if (!TryGetValue(metadata, path, out var arrayValue) || !arrayValue.IsBsonArray)
-            {
-                continue;
-            }
-
-            var array = arrayValue.AsBsonArray;
-            if (array.Count < 2) continue;
-
-            var first = ParseCoordinate(array[0]);
-            var second = ParseCoordinate(array[1]);
-            if (!first.HasValue || !second.HasValue) continue;
-
-            // Assume [lng, lat] when values look like longitude/latitude pair.
-            if (Math.Abs(first.Value) > 90 && Math.Abs(second.Value) <= 90)
-            {
-                return (latitude: second, longitude: first);
-            }
-
-            return (latitude: first, longitude: second);
-        }
-
-        return (null, null);
-    }
-
-    private static bool TryGetValue(BsonDocument document, string path, out BsonValue value)
-    {
-        value = BsonNull.Value;
-        var current = (BsonValue)document;
-        foreach (var segment in path.Split('.'))
-        {
-            if (!current.IsBsonDocument || !current.AsBsonDocument.TryGetValue(segment, out current))
-            {
-                return false;
-            }
-        }
-
-        value = current;
-        return true;
-    }
-
-    private static double? ParseCoordinate(BsonValue value)
-    {
-        if (value.IsBsonNull) return null;
-        if (value.IsDouble) return value.AsDouble;
-        if (value.IsInt32) return value.AsInt32;
-        if (value.IsInt64) return value.AsInt64;
-        if (value.IsString && double.TryParse(value.AsString, NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
-        {
-            return result;
-        }
-
-        return null;
-    }
-
     private static RetrievedPassage ToPassage(BsonDocument doc)
     {
         var metadata = doc.GetValue("metadata", new BsonDocument()).AsBsonDocument;
@@ -568,6 +621,11 @@ public sealed class RetrievalService
     }
 }
 
+public sealed record AgenticAnswer(
+    string Answer,
+    IReadOnlyList<RetrievedPassage> Passages,
+    IReadOnlyList<string> SearchQueries);
+
 public sealed class ClaudeService
 {
     private readonly AppSecrets _secrets;
@@ -579,11 +637,320 @@ public sealed class ClaudeService
         _httpClientFactory = httpClientFactory;
     }
 
+    // Agentic retrieval: Claude orchestrates the search via tool use.
+    // It can call search_documents up to maxIterations times, reformulating between calls,
+    // then answers from whatever it found. Lessons are surfaced as system-prompt guidance —
+    // Claude decides how to use them rather than us forcing them into the query.
+    public async Task<AgenticAnswer> AnswerWithToolsAsync(
+        string question,
+        IReadOnlyList<LessonRecord>? appliedLessons,
+        Func<string, IReadOnlyList<string>?, Task<IReadOnlyList<RetrievedPassage>>> searchTool,
+        int maxIterations = 3)
+    {
+        if (string.IsNullOrWhiteSpace(_secrets.AnthropicApiKey))
+        {
+            return new AgenticAnswer("Claude is not configured. Set ANTHROPIC_API_KEY and ask again.",
+                Array.Empty<RetrievedPassage>(), Array.Empty<string>());
+        }
+
+        var systemPrompt = BuildAgenticSystemPrompt(appliedLessons);
+        var tools = BuildToolDefinitions();
+
+        var messages = new List<object>
+        {
+            new { role = "user", content = question }
+        };
+
+        var queriesUsed = new List<string>();
+        var allPassages = new Dictionary<string, RetrievedPassage>();
+        string? finalText = null;
+
+        for (int iteration = 0; iteration < maxIterations; iteration++)
+        {
+            var requestBody = JsonSerializer.Serialize(new
+            {
+                model = _secrets.AnthropicModel,
+                max_tokens = 1500,
+                temperature = 0.2,
+                system = systemPrompt,
+                tools,
+                messages
+            });
+
+            var responseJson = await SendAnthropicRequestAsync(requestBody);
+            if (responseJson is null)
+            {
+                finalText = "Claude API error — see server logs.";
+                break;
+            }
+
+            // Parse the response: collect text and tool_use blocks.
+            var contentBlocks = responseJson.RootElement.TryGetProperty("content", out var contentEl)
+                ? contentEl.EnumerateArray().ToList()
+                : new List<JsonElement>();
+            var stopReason = responseJson.RootElement.TryGetProperty("stop_reason", out var srEl)
+                ? srEl.GetString() : null;
+
+            var toolUseBlocks = contentBlocks
+                .Where(b => b.TryGetProperty("type", out var t) && t.GetString() == "tool_use")
+                .ToList();
+
+            // No tool calls → Claude is answering. Extract its text and finish.
+            if (toolUseBlocks.Count == 0 || stopReason != "tool_use")
+            {
+                finalText = string.Join("\n",
+                    contentBlocks
+                        .Where(b => b.TryGetProperty("type", out var t) && t.GetString() == "text")
+                        .Select(b => b.GetProperty("text").GetString() ?? ""));
+                break;
+            }
+
+            // Append the assistant turn (raw content blocks — we have to echo them back verbatim).
+            messages.Add(new { role = "assistant", content = contentBlocks.Select(JsonElementToObject).ToList() });
+
+            // Execute each tool call, collect tool_result blocks for the next user turn.
+            var toolResults = new List<object>();
+            foreach (var block in toolUseBlocks)
+            {
+                var toolUseId = block.GetProperty("id").GetString() ?? "";
+                var toolName = block.GetProperty("name").GetString() ?? "";
+                var input = block.GetProperty("input");
+
+                if (toolName == "search_documents")
+                {
+                    var query = input.TryGetProperty("query", out var qEl) ? qEl.GetString() ?? "" : "";
+                    IReadOnlyList<string>? sourceTypes = null;
+                    if (input.TryGetProperty("source_types", out var stEl) && stEl.ValueKind == JsonValueKind.Array)
+                    {
+                        sourceTypes = stEl.EnumerateArray()
+                            .Select(e => e.GetString() ?? "")
+                            .Where(s => !string.IsNullOrWhiteSpace(s))
+                            .ToList();
+                        if (sourceTypes.Count == 0) sourceTypes = null;
+                    }
+
+                    queriesUsed.Add(query);
+                    var hits = await searchTool(query, sourceTypes);
+
+                    foreach (var p in hits)
+                    {
+                        var key = $"{p.SourceId}#{p.ChunkIndex}";
+                        if (!allPassages.TryGetValue(key, out var existing) || p.RrfScore > existing.RrfScore)
+                        {
+                            allPassages[key] = p;
+                        }
+                    }
+
+                    var resultText = FormatHitsForClaude(hits);
+                    toolResults.Add(new
+                    {
+                        type = "tool_result",
+                        tool_use_id = toolUseId,
+                        content = resultText
+                    });
+                }
+                else
+                {
+                    toolResults.Add(new
+                    {
+                        type = "tool_result",
+                        tool_use_id = toolUseId,
+                        content = $"Unknown tool: {toolName}",
+                        is_error = true
+                    });
+                }
+            }
+
+            messages.Add(new { role = "user", content = toolResults });
+        }
+
+        if (finalText is null)
+        {
+            // Hit the iteration cap without a final text. Force a wrap-up turn.
+            messages.Add(new
+            {
+                role = "user",
+                content = "You've used your search budget. Answer now from the evidence you've already retrieved."
+            });
+            var wrapBody = JsonSerializer.Serialize(new
+            {
+                model = _secrets.AnthropicModel,
+                max_tokens = 1500,
+                temperature = 0.2,
+                system = systemPrompt,
+                messages
+            });
+            var wrapResponse = await SendAnthropicRequestAsync(wrapBody);
+            finalText = wrapResponse?.RootElement.TryGetProperty("content", out var c) == true
+                ? string.Join("\n", c.EnumerateArray()
+                    .Where(b => b.TryGetProperty("type", out var t) && t.GetString() == "text")
+                    .Select(b => b.GetProperty("text").GetString() ?? ""))
+                : "Out of search budget and Claude returned no final text.";
+        }
+
+        return new AgenticAnswer(
+            Answer: finalText,
+            Passages: allPassages.Values.OrderByDescending(p => p.RrfScore).ToList(),
+            SearchQueries: queriesUsed);
+    }
+
+    private async Task<JsonDocument?> SendAnthropicRequestAsync(string body)
+    {
+        var client = _httpClientFactory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages");
+        request.Headers.Add("x-api-key", _secrets.AnthropicApiKey);
+        request.Headers.Add("anthropic-version", "2023-06-01");
+        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using var response = await client.SendAsync(request);
+        var text = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            Console.Error.WriteLine($"Claude API error {(int)response.StatusCode}: {text}");
+            return null;
+        }
+        return JsonDocument.Parse(text);
+    }
+
+    private static string FormatHitsForClaude(IReadOnlyList<RetrievedPassage> hits)
+    {
+        if (hits.Count == 0) return "No matching chunks found. Try a different query — different keywords, building names, or terminology.";
+        // Truncate each chunk to ~600 chars: enough for Claude to judge relevance and quote, but
+        // small enough to keep latency reasonable across multiple iterations. The full text is
+        // preserved in the API response for the UI/citations.
+        const int maxChars = 600;
+        var sb = new StringBuilder();
+        sb.AppendLine($"Found {hits.Count} chunks:");
+        sb.AppendLine();
+        foreach (var p in hits)
+        {
+            var vScore = p.VectorScore.HasValue ? p.VectorScore.Value.ToString("0.000") : "—";
+            var kRank = p.KeywordRank.HasValue ? p.KeywordRank.Value.ToString() : "—";
+            sb.AppendLine($"[{p.SourceId}#{p.ChunkIndex}] type={p.SourceType ?? "?"} vScore={vScore} kRank={kRank} file={p.Filename ?? "?"} page={p.Page?.ToString() ?? "?"}");
+            var snippet = p.Text.Length > maxChars ? p.Text[..maxChars] + "…" : p.Text;
+            sb.AppendLine(snippet);
+            sb.AppendLine();
+        }
+        return sb.ToString();
+    }
+
+    private static string BuildAgenticSystemPrompt(IReadOnlyList<LessonRecord>? lessons)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("You are a careful due-diligence assistant for Greenwich Millennium Village (a London apartment development, building_id \"gmv\"). You answer questions for building service providers using a corpus of documents about this development.");
+        sb.AppendLine();
+        sb.AppendLine("Corpus contents: leases, Companies House filings, forum threads, sales data, notes. The corpus references specific buildings (Holly Court, Farnsworth Court, etc.) and uses terms like \"GMV\" or \"Greenwich Millennium Village\" — it never uses the phrase \"Glass Houses\" even though users may ask that way.");
+        sb.AppendLine();
+        sb.AppendLine("You have a `search_documents` tool. To answer well:");
+        sb.AppendLine("- Search before answering. Use specific keywords, proper nouns, and the corpus's actual terminology.");
+        sb.AppendLine("- If the user asks about \"Glass Houses\", search for \"GMV\", \"Greenwich Millennium Village\", or specific building names instead.");
+        sb.AppendLine("- If a search returns thin or off-topic results, search again with different terms. Reformulate aggressively.");
+        sb.AppendLine("- You can call search_documents up to 3 times. Choose queries strategically — usually one well-formed query is enough.");
+        sb.AppendLine("- Stop searching once you have enough relevant evidence, then answer using only retrieved chunks.");
+        sb.AppendLine("- If after searching you genuinely have no evidence, say so plainly — do not fabricate.");
+        sb.AppendLine();
+        sb.AppendLine("ANSWER STYLE — be concise and well-formatted:");
+        sb.AppendLine("- Lead with a one-sentence direct answer (a short prose paragraph).");
+        sb.AppendLine("- THEN, when you have 3+ findings, list them as bullets — ONE finding per line, each line starting with a dash and a space: \"- ...\".");
+        sb.AppendLine("- Each bullet is ONE sentence. Do NOT combine multiple findings on one line. Do NOT run findings together in a paragraph.");
+        sb.AppendLine("- Do NOT use **bold sub-headings** like \"**Key Positives:**\" or \"**Concerns:**\". The emojis below already convey that. Just go straight to the bullets.");
+        sb.AppendLine("- Do NOT use section headings (no \"## Heading\", no \"###\"). Do NOT use asterisks for bullets, only dashes.");
+        sb.AppendLine("- Use **bold** sparingly inside a bullet for the single key term (e.g. **£4.75 million**, **Holly Court**). Never bold the whole bullet.");
+        sb.AppendLine("- Cite sources inline as [source_id#chunk_index] only on claims that need backing.");
+        sb.AppendLine("- No preamble (\"Based on my search…\"), no recap of the question, no closing summary.");
+        sb.AppendLine();
+        sb.AppendLine("EVALUATIVE EMOJI — every bullet that makes a judgment about a finding starts with exactly one emoji directly after the dash:");
+        sb.AppendLine("- ✅  positive / reassuring");
+        sb.AppendLine("- ⚠️  caution / risk worth flagging");
+        sb.AppendLine("- ❌  negative / blocking issue");
+        sb.AppendLine("- ℹ️  neutral context (no judgment)");
+        sb.AppendLine();
+        sb.AppendLine("EXAMPLE of the EXACT format expected:");
+        sb.AppendLine("Greenwich Millennium Village has strong fundamentals but a flagged litigation history.");
+        sb.AppendLine();
+        sb.AppendLine("- ✅ **Strong transport links** via A102 and North Greenwich Tube [GMV_Phases#24].");
+        sb.AppendLine("- ❌ **£4.75M flooding lawsuit** against Essex Services Group [legal-dispute-map#6].");
+        sb.AppendLine("- ⚠️ Multi-year **service charge dispute** at Holly Court resulted in a 2008 tribunal refund [legal-dispute-map#10].");
+        sb.AppendLine("- ℹ️ Development was built in phases starting in 2002 [GLA_Report#0].");
+        sb.AppendLine();
+        sb.AppendLine("Each bullet is one sentence, one emoji, one source citation max. Follow this format every time you have findings to list.");
+        sb.AppendLine();
+        sb.AppendLine("You distinguish evidence from inference. You do not give legal or financial advice.");
+
+        if (lessons is { Count: > 0 })
+        {
+            sb.AppendLine();
+            sb.AppendLine("---");
+            sb.AppendLine("Learned guidance from past similar questions (apply when relevant):");
+            foreach (var l in lessons)
+            {
+                sb.AppendLine($"- {l.LessonText}");
+                if (l.SuggestedQueryTerms.Count > 0)
+                    sb.AppendLine($"  (suggested terms to try: {string.Join(", ", l.SuggestedQueryTerms)})");
+                if (l.SuggestedSourceTypes.Count > 0)
+                    sb.AppendLine($"  (suggested source types to filter to: {string.Join(", ", l.SuggestedSourceTypes)})");
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static object[] BuildToolDefinitions()
+    {
+        return new object[]
+        {
+            new
+            {
+                name = "search_documents",
+                description = "Search the GMV document corpus for chunks relevant to a query. Returns top chunks with text, source, and scores. Call multiple times with reformulated queries to find better evidence.",
+                input_schema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new
+                        {
+                            type = "string",
+                            description = "The search query — use specific keywords, proper nouns (Holly Court, Farnsworth Court, GMV), and corpus terminology rather than the user's wording."
+                        },
+                        source_types = new
+                        {
+                            type = "array",
+                            items = new
+                            {
+                                type = "string",
+                                @enum = new[] { "lease", "companies_house", "forum", "sales_data", "notes", "other" }
+                            },
+                            description = "Optional. Restrict the search to specific source types. Leave empty to search across all."
+                        }
+                    },
+                    required = new[] { "query" }
+                }
+            }
+        };
+    }
+
+    // Anthropic requires us to echo assistant content blocks back verbatim, including unknown
+    // fields. JsonElement → plain object preserves them across the serializer round-trip.
+    private static object JsonElementToObject(JsonElement el)
+    {
+        return el.ValueKind switch
+        {
+            JsonValueKind.Object => el.EnumerateObject().ToDictionary(p => p.Name, p => JsonElementToObject(p.Value)),
+            JsonValueKind.Array => el.EnumerateArray().Select(JsonElementToObject).ToList(),
+            JsonValueKind.String => el.GetString() ?? "",
+            JsonValueKind.Number => el.TryGetInt64(out var l) ? l : (object)el.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null!,
+            _ => ""
+        };
+    }
+
     public async Task<string> AnswerAsync(
         string question,
         IReadOnlyList<RetrievedPassage> passages,
-        IReadOnlyList<LessonRecord>? appliedLessons = null,
-        IReadOnlyList<Complaint>? complaints = null)
+        IReadOnlyList<LessonRecord>? appliedLessons = null)
     {
         if (string.IsNullOrWhiteSpace(_secrets.AnthropicApiKey))
         {
@@ -592,7 +959,6 @@ public sealed class ClaudeService
 
         var context = BuildContext(passages);
         var lessonsBlock = BuildLessonsBlock(appliedLessons);
-        var complaintsBlock = BuildComplaintsBlock(complaints);
         var userPrompt = $"""
         Question:
         {question}
@@ -601,7 +967,7 @@ public sealed class ClaudeService
         {context}
 
         Answer the question using only the retrieved evidence. If the evidence is thin or contradictory, say so plainly.
-        Cite sources inline using [source_id#chunk_index] after the sentence they support.{complaintsBlock}
+        Cite sources inline using [source_id#chunk_index] after the sentence they support.
         """;
 
         var systemPrompt = "You are a careful due-diligence assistant for Greenwich Millennium Village. You answer from retrieved source chunks, distinguish evidence from inference, and avoid legal or financial advice."
@@ -652,21 +1018,6 @@ public sealed class ClaudeService
             sb.AppendLine();
         }
 
-        return sb.ToString();
-    }
-
-    private static string BuildComplaintsBlock(IReadOnlyList<Complaint>? complaints)
-    {
-        if (complaints is null || complaints.Count == 0) return "";
-        var sb = new StringBuilder();
-        sb.AppendLine();
-        sb.AppendLine();
-        sb.AppendLine("---");
-        sb.AppendLine("Related resident complaints from the housing management system:");
-        foreach (var c in complaints)
-        {
-            sb.AppendLine($"- [{c.BuildingName}] {c.Category}: {c.Description}");
-        }
         return sb.ToString();
     }
 

@@ -32,6 +32,133 @@ public sealed class LessonsService
         _chatHistory = db.GetCollection<BsonDocument>("chat_history");
     }
 
+    public const string LessonsVectorIndexName = "lessons_pattern_vector_cosine";
+
+    // Curated seed lessons. These are inserted on startup if missing and re-inserted after
+    // /api/lessons/clear, so they survive wipes. Keyed by seed_name for idempotent upsert.
+    // Each entry teaches Claude both retrieval routing (suggested terms / source types) AND
+    // an output format via lesson_text — both get injected into the system prompt at runtime.
+    private sealed record SeedLesson(
+        string SeedName,
+        string QuestionPattern,
+        string LessonText,
+        string[] SuggestedQueryTerms,
+        string[] SuggestedSourceTypes);
+
+    private static readonly SeedLesson[] SeededLessons = new[]
+    {
+        new SeedLesson(
+            SeedName: "risk_report_format_v1",
+            QuestionPattern: "risk report due diligence assessment for property development",
+            LessonText:
+                "When the user asks for a risk report, due-diligence assessment, or risk analysis, " +
+                "format the answer as five named sections IN THIS EXACT ORDER: Safety, Financial, " +
+                "Legal, Build quality, Neighbourhood. Render each category's name as a bold standalone " +
+                "line (e.g. \"**Safety**\") followed by 2-4 dash bullets covering the scoring factors " +
+                "for that category. Every bullet must start with an evaluative emoji " +
+                "(✅ positive / ⚠️ caution / ❌ negative / ℹ️ neutral) and " +
+                "include one source citation in [source_id#chunk_index] format. " +
+                "Scoring factors per category: " +
+                "Safety = fire, cladding, structural integrity. " +
+                "Financial = service charge trajectory, heat network costs, sinking fund. " +
+                "Legal = disputes, rent repayment orders (RROs), litigation, lease defects. " +
+                "Build quality = defect history, acoustic issues, ventilation. " +
+                "Neighbourhood = planning pipeline, noise, congestion. " +
+                "Issue separate searches per category if necessary to populate all five. " +
+                "Never skip a category: if no evidence exists, write one ℹ️ bullet stating " +
+                "that no documented information was found for that category.",
+            SuggestedQueryTerms: new[]
+            {
+                "fire safety cladding EWS",
+                "structural defects building",
+                "service charges heat network sinking fund",
+                "Switch2 contract leaseholder",
+                "rent repayment order RRO litigation",
+                "lease defects",
+                "Holly Court Essex Services Group",
+                "acoustic report ventilation defects",
+                "planning pipeline applications neighbourhood",
+            },
+            SuggestedSourceTypes: new[] { "lease", "companies_house", "notes", "other" })
+    };
+
+    // Idempotent: any seed lesson with a matching seed_name is replaced; missing ones are inserted.
+    // Embeds the question_pattern at runtime so the embedding always uses the current Voyage model.
+    public async Task EnsureSeededLessonsAsync()
+    {
+        foreach (var seed in SeededLessons)
+        {
+            try
+            {
+                var embedding = await EmbedTextAsync(seed.QuestionPattern, "query");
+                var doc = new BsonDocument
+                {
+                    ["building_id"] = _secrets.BuildingId,
+                    ["question_pattern"] = seed.QuestionPattern,
+                    ["question_pattern_embedding"] = new BsonArray(embedding.Select(v => (BsonValue)new BsonDouble(v))),
+                    ["lesson_text"] = seed.LessonText,
+                    ["suggested_query_terms"] = new BsonArray(seed.SuggestedQueryTerms),
+                    ["suggested_source_types"] = new BsonArray(seed.SuggestedSourceTypes),
+                    ["source_chat_ids"] = new BsonArray(),
+                    ["applied_count"] = 0,
+                    ["avg_score_when_applied"] = 0.0,
+                    ["feedback_count"] = 0,
+                    ["sample_feedback"] = BsonNull.Value,
+                    ["created_at"] = DateTime.UtcNow,
+                    ["updated_at"] = DateTime.UtcNow,
+                    ["manually_seeded"] = true,
+                    ["seed_name"] = seed.SeedName
+                };
+
+                var filter = Builders<BsonDocument>.Filter.Eq("seed_name", seed.SeedName);
+                await _lessons.ReplaceOneAsync(filter, doc, new ReplaceOptions { IsUpsert = true });
+                Console.Error.WriteLine($"[lessons] seeded lesson '{seed.SeedName}'");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[lessons] could not seed '{seed.SeedName}': {ex.Message}");
+            }
+        }
+    }
+
+    // Best-effort: create the Atlas Search vector index for lessons if it doesn't exist.
+    // Index build is async on Atlas's side (takes ~30-60s); meanwhile the brute-force path serves queries.
+    public async Task EnsureLessonsVectorIndexAsync()
+    {
+        try
+        {
+            var cursor = await _lessons.SearchIndexes.ListAsync();
+            var existing = await cursor.ToListAsync();
+            if (existing.Any(d => d.GetValue("name", "").AsString == LessonsVectorIndexName)) return;
+
+            var definition = new BsonDocument
+            {
+                ["fields"] = new BsonArray
+                {
+                    new BsonDocument
+                    {
+                        ["type"] = "vector",
+                        ["path"] = "question_pattern_embedding",
+                        ["numDimensions"] = 1024,
+                        ["similarity"] = "cosine"
+                    },
+                    new BsonDocument
+                    {
+                        ["type"] = "filter",
+                        ["path"] = "building_id"
+                    }
+                }
+            };
+            var model = new CreateSearchIndexModel(LessonsVectorIndexName, SearchIndexType.VectorSearch, definition);
+            await _lessons.SearchIndexes.CreateOneAsync(model);
+            Console.Error.WriteLine($"[lessons] created vector index '{LessonsVectorIndexName}' (will be available once Atlas finishes building it)");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[lessons] could not ensure vector index (will use brute-force fallback): {ex.Message}");
+        }
+    }
+
     // ---------- chat recording ----------
 
     public async Task<string> RecordChatAsync(
@@ -73,19 +200,16 @@ public sealed class LessonsService
         return doc.GetValue("_id").AsObjectId.ToString();
     }
 
-    public async Task<bool> RateChatAsync(string chatId, string rating)
+    public async Task<bool> SaveFeedbackAsync(string chatId, int rating, string? feedback)
     {
-        if (!ObjectId.TryParse(chatId, out var oid))
-        {
-            return false;
-        }
-        if (rating is not ("up" or "down"))
-        {
-            return false;
-        }
+        if (!ObjectId.TryParse(chatId, out var oid)) return false;
+        if (rating < 1 || rating > 5) return false;
+        var trimmed = feedback?.Trim();
         var update = Builders<BsonDocument>.Update
             .Set("rating", rating)
-            .Set("rated_at", DateTime.UtcNow);
+            .Set("feedback", string.IsNullOrEmpty(trimmed) ? (BsonValue)BsonNull.Value : trimmed)
+            .Set("rated_at", DateTime.UtcNow)
+            .Set("reflected_at", BsonNull.Value);  // allow re-reflection with the new rating/feedback
         var result = await _chatHistory.UpdateOneAsync(
             Builders<BsonDocument>.Filter.Eq("_id", oid), update);
         return result.MatchedCount == 1;
@@ -109,7 +233,54 @@ public sealed class LessonsService
     // ---------- lesson lookup ----------
 
     public async Task<IReadOnlyList<LessonRecord>> GetRelevantLessonsAsync(
-        IReadOnlyList<double> questionEmbedding, int topK = 3, double minSim = 0.4)
+        IReadOnlyList<double> questionEmbedding, int topK = 3, double minSim = 0.3)
+    {
+        // Prefer Atlas $vectorSearch on the lessons collection — scales as the lesson library grows.
+        // Falls back to in-memory cosine if the index doesn't exist or isn't ready yet (newly built indexes
+        // take ~30-60s on Atlas; queries against a not-yet-ready index throw, and we degrade silently).
+        try
+        {
+            var atlasResults = await GetRelevantLessonsViaAtlasAsync(questionEmbedding, topK, minSim);
+            return atlasResults;
+        }
+        catch
+        {
+            return await GetRelevantLessonsBruteForceAsync(questionEmbedding, topK, minSim);
+        }
+    }
+
+    private async Task<IReadOnlyList<LessonRecord>> GetRelevantLessonsViaAtlasAsync(
+        IReadOnlyList<double> questionEmbedding, int topK, double minSim)
+    {
+        var vector = new BsonArray(questionEmbedding.Select(v => (BsonValue)new BsonDouble(v)));
+        var vectorSearch = new BsonDocument
+        {
+            ["index"] = LessonsVectorIndexName,
+            ["path"] = "question_pattern_embedding",
+            ["queryVector"] = vector,
+            ["numCandidates"] = Math.Max(50, topK * 20),
+            ["limit"] = topK
+        };
+        if (!string.IsNullOrWhiteSpace(_secrets.BuildingId))
+        {
+            vectorSearch["filter"] = new BsonDocument("building_id", _secrets.BuildingId);
+        }
+
+        var pipeline = new[]
+        {
+            new BsonDocument("$vectorSearch", vectorSearch),
+            new BsonDocument("$addFields", new BsonDocument("similarity", new BsonDocument("$meta", "vectorSearchScore")))
+        };
+
+        var docs = await _lessons.Aggregate<BsonDocument>(pipeline).ToListAsync();
+        return docs
+            .Where(d => d.GetValue("similarity", 0.0).ToDouble() >= minSim)
+            .Select(d => LessonRecord.FromBson(d) with { Similarity = d.GetValue("similarity", 0.0).ToDouble() })
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<LessonRecord>> GetRelevantLessonsBruteForceAsync(
+        IReadOnlyList<double> questionEmbedding, int topK, double minSim)
     {
         var all = await _lessons.Find(FilterDefinition<BsonDocument>.Empty).ToListAsync();
         var ranked = new List<(LessonRecord lesson, double sim)>();
@@ -141,6 +312,8 @@ public sealed class LessonsService
     public async Task<long> ClearAllLessonsAsync()
     {
         var result = await _lessons.DeleteManyAsync(FilterDefinition<BsonDocument>.Empty);
+        // Re-seed curated lessons so "clear" wipes user-generated learning but keeps the curated baseline.
+        await EnsureSeededLessonsAsync();
         return result.DeletedCount;
     }
 
@@ -173,15 +346,18 @@ public sealed class LessonsService
         if (chat is null) return null;
         if (!chat.GetValue("reflected_at", BsonNull.Value).IsBsonNull) return null;
 
-        var rating = chat.GetValue("rating", BsonNull.Value);
+        var feedbackVal = chat.GetValue("feedback", BsonNull.Value);
+        var feedback = feedbackVal.IsBsonNull ? null : feedbackVal.AsString;
+        var ratingVal = chat.GetValue("rating", BsonNull.Value);
+        int? rating = ratingVal.IsBsonNull ? null : ratingVal.ToInt32();
         var topScore = chat.GetValue("top_score", 0.0).ToDouble();
-        // Skip reflection on bad chats — they teach the wrong lesson
-        if (!rating.IsBsonNull && rating.AsString == "down")
-        {
-            await MarkReflected(oid);
-            return null;
-        }
-        if (rating.IsBsonNull && topScore < 0.5)
+
+        // Reflection policy: reflect on every rated chat. The rating sets the framing for Claude:
+        //  - Rating ≤ 2: a gap to fix (what should we have retrieved instead?).
+        //  - Rating == 3: mixed (what was good, what was missing or weak — extract a balanced lesson).
+        //  - Rating ≥ 4: a pattern to reinforce (what made this work?).
+        // Skip only if the chat is unrated AND has no text feedback AND retrieval was already weak.
+        if (rating is null && feedback is null && topScore < 0.5)
         {
             await MarkReflected(oid);
             return null;
@@ -191,14 +367,16 @@ public sealed class LessonsService
         var answer = chat.GetValue("answer", "").AsString;
         var passages = chat.GetValue("retrieved_passages", new BsonArray()).AsBsonArray;
 
-        var extracted = await CallClaudeForLessonAsync(question, answer, passages, rating);
+        var extracted = await CallClaudeForLessonAsync(question, answer, passages, feedback, rating);
         if (extracted is null || !extracted.ShouldSave)
         {
             await MarkReflected(oid);
             return null;
         }
 
-        var patternEmbedding = await EmbedTextAsync(extracted.QuestionPattern, "document");
+        // Embed lesson patterns as "query" so they live in the same vector space as user questions
+        // (which we also embed as "query"). Mixing query+document spaces deflates cosine similarity.
+        var patternEmbedding = await EmbedTextAsync(extracted.QuestionPattern, "query");
         var lessonDoc = new BsonDocument
         {
             ["building_id"] = _secrets.BuildingId,
@@ -210,8 +388,8 @@ public sealed class LessonsService
             ["source_chat_ids"] = new BsonArray(new[] { (BsonValue)oid }),
             ["applied_count"] = 0,
             ["avg_score_when_applied"] = 0.0,
-            ["positive_feedback_count"] = rating.IsBsonNull ? 0 : (rating.AsString == "up" ? 1 : 0),
-            ["negative_feedback_count"] = 0,
+            ["feedback_count"] = feedback is null ? 0 : 1,
+            ["sample_feedback"] = feedback ?? (BsonValue)BsonNull.Value,
             ["created_at"] = DateTime.UtcNow,
             ["updated_at"] = DateTime.UtcNow
         };
@@ -266,9 +444,18 @@ public sealed class LessonsService
         return embedding;
     }
 
-    private async Task<ExtractedLesson?> CallClaudeForLessonAsync(string question, string answer, BsonArray passages, BsonValue rating)
+    private async Task<ExtractedLesson?> CallClaudeForLessonAsync(string question, string answer, BsonArray passages, string? feedback, int? rating)
     {
-        var ratingStr = rating.IsBsonNull ? "none" : rating.AsString;
+        var feedbackBlock = string.IsNullOrWhiteSpace(feedback) ? "(no text feedback)" : $"\"{feedback}\"";
+        var ratingBlock = rating.HasValue ? $"{rating.Value}/5" : "(no rating)";
+        // Direction tells Claude what kind of lesson to extract: a fix (low rating) or a reinforcement (high rating).
+        var direction = rating switch
+        {
+            <= 2 => "The user rated this answer poorly. Treat this as a retrieval FAILURE — figure out what should have been retrieved instead, and encode that in suggested_query_terms / suggested_source_types.",
+            >= 4 => "The user rated this answer well. Treat this as a retrieval SUCCESS — encode what made it work in suggested_query_terms / suggested_source_types so similar future questions retrieve the same kinds of chunks.",
+            3 => "The user rated this answer mixed (3/5). Read their text feedback (if any) to find what was good and what was missing or weak. Extract a balanced lesson: keep the parts of the retrieval pattern that worked, and add suggested_query_terms or suggested_source_types that would close the gap on the parts that didn't.",
+            _ => "No rating was given. Use the text feedback (if any) to determine whether this was a success or failure pattern."
+        };
         var passageSummary = string.Join("\n", passages.Take(5).Select((p, i) =>
         {
             var d = p.AsBsonDocument;
@@ -285,18 +472,21 @@ Top retrieved passages:
 
 Final answer (truncated): "{{(answer.Length > 600 ? answer[..600] + "..." : answer)}}"
 
-User rating: {{ratingStr}}
+User rating: {{ratingBlock}}
+User text feedback: {{feedbackBlock}}
 
-Extract one transferable lesson. Return ONLY a JSON object (no prose, no code fences) with this exact schema:
+{{direction}}
+
+Return ONLY a JSON object (no prose, no code fences) with this exact schema:
 {
   "should_save": true | false,
   "question_pattern": "<short generalised form of the question, max 12 words>",
   "suggested_query_terms": ["<3 to 8 keywords or phrases that would help retrieve relevant chunks>"],
   "suggested_source_types": ["<subset of: lease, companies_house, forum, sales_data, notes, other>"],
-  "lesson_text": "<one-sentence lesson, max 25 words>"
+  "lesson_text": "<one-sentence lesson, max 25 words, written as actionable retrieval guidance>"
 }
 
-Set should_save=false if the question is too generic to generalise from, or if the user's rating was 'down', or if no clear retrieval pattern emerges.
+Set should_save=false ONLY if the question is too generic to generalise from, or no clear retrieval pattern emerges.
 """;
 
         var body = JsonSerializer.Serialize(new
@@ -362,13 +552,14 @@ public sealed record LessonRecord(
     IReadOnlyList<string> SuggestedSourceTypes,
     int AppliedCount,
     double AvgScoreWhenApplied,
-    int PositiveFeedbackCount,
-    int NegativeFeedbackCount,
+    int FeedbackCount,
+    string? SampleFeedback,
     DateTime CreatedAt,
     double Similarity = 0.0)
 {
     public static LessonRecord FromBson(BsonDocument doc)
     {
+        var sampleFeedbackVal = doc.GetValue("sample_feedback", BsonNull.Value);
         return new LessonRecord(
             Id: doc.GetValue("_id").AsObjectId.ToString(),
             QuestionPattern: doc.GetValue("question_pattern", "").AsString,
@@ -379,8 +570,8 @@ public sealed record LessonRecord(
                 .Select(v => v.AsString).ToList(),
             AppliedCount: doc.GetValue("applied_count", 0).ToInt32(),
             AvgScoreWhenApplied: doc.GetValue("avg_score_when_applied", 0.0).ToDouble(),
-            PositiveFeedbackCount: doc.GetValue("positive_feedback_count", 0).ToInt32(),
-            NegativeFeedbackCount: doc.GetValue("negative_feedback_count", 0).ToInt32(),
+            FeedbackCount: doc.GetValue("feedback_count", doc.GetValue("positive_feedback_count", 0)).ToInt32(),
+            SampleFeedback: sampleFeedbackVal.IsBsonNull ? null : sampleFeedbackVal.AsString,
             CreatedAt: doc.GetValue("created_at", DateTime.MinValue).ToUniversalTime());
     }
 }
