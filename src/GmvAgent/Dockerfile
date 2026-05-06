@@ -14,4 +14,5 @@ COPY --from=build /app/publish ./
 ENV ASPNETCORE_HTTP_PORTS=80
 EXPOSE 80
 
+
 ENTRYPOINT ["dotnet", "GmvAgent.dll"]

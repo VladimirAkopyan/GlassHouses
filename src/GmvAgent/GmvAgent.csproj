@@ -4,6 +4,10 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Disable static web asset compression to avoid failures with special chars in filenames -->
+    <EnableStaticWebAssetsBuildPropsFileGeneration>false</EnableStaticWebAssetsBuildPropsFileGeneration>
+    <CompressionEnabled>false</CompressionEnabled>
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
   </PropertyGroup>
 
   <ItemGroup>
