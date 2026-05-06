@@ -1,7 +1,10 @@
 // --- Map (Leaflet) ---
 const GMV_CENTER = [51.4970, 0.0080];
 let mapInstance = null;
-const placedPins = []; // { name, marker }
+let geoLayerRef = null;
+// Lookup of (lowercased) building name -> { layer, defaultStyle, isPoint }
+// Lets highlightBuildings(names) find the matching polygon and toggle emphasis.
+const buildingLayerByName = new Map();
 
 function addRegisterBuildingLayer() {
   if (!mapInstance) return;
@@ -51,10 +54,20 @@ function addRegisterBuildingLayer() {
               className: "buildingLabel"
             });
             layer.bindPopup(`<strong>${name}</strong>`);
+
+            // Snapshot the default style so highlightBuildings can restore it.
+            const defaultStyle = { ...layer.options };
+            buildingLayerByName.set(name.toLowerCase(), {
+              name,
+              layer,
+              defaultStyle,
+              isPoint: feature.geometry && feature.geometry.type === "Point"
+            });
           }
         }
       }).addTo(mapInstance);
 
+      geoLayerRef = geoLayer;
       mapInstance.fitBounds(geoLayer.getBounds(), { padding: [8, 8], maxZoom: 18 });
 
       const status = document.querySelector("#mapStatus");
@@ -62,6 +75,63 @@ function addRegisterBuildingLayer() {
         status.textContent = `Map loaded: ${geojson.features.length} buildings.`;
       }
     });
+}
+
+// Reset every building polygon to its default style. Used before applying a new highlight.
+function clearBuildingHighlights() {
+  for (const entry of buildingLayerByName.values()) {
+    entry.layer.setStyle(entry.defaultStyle);
+  }
+}
+
+// Highlight the building polygons matched by Vlad's BuildingRegistry.Detect on the server.
+// Thicker dark border + brighter fill + bring to front; fits map to the union of bounds.
+// Empty list = clear any existing highlight.
+function highlightBuildings(names) {
+  if (!mapInstance) return;
+  clearBuildingHighlights();
+
+  const status = document.querySelector("#mapStatus");
+  if (!names || names.length === 0) {
+    if (status) status.textContent = "No specific building was matched in this answer.";
+    return;
+  }
+
+  const matched = [];
+  for (const raw of names) {
+    const entry = buildingLayerByName.get(String(raw).toLowerCase());
+    if (!entry) continue;
+    matched.push(entry);
+
+    // Emphasis style: dark teal border, full opacity, slightly thicker stroke.
+    const emphasis = {
+      color: "#0d3d3a",
+      weight: entry.isPoint ? 3 : 4,
+      fillColor: entry.defaultStyle.fillColor,  // keep the colour identity
+      fillOpacity: 0.95
+    };
+    if (entry.isPoint) emphasis.radius = 10;
+    entry.layer.setStyle(emphasis);
+    if (entry.layer.bringToFront) entry.layer.bringToFront();
+  }
+
+  if (matched.length === 0) {
+    if (status) status.textContent = `Mentioned: ${names.join(", ")} (not on this map).`;
+    return;
+  }
+
+  // Fit map to the union of matched bounds (or just pan for a Point).
+  const featureGroup = L.featureGroup(matched.map(m => m.layer));
+  const bounds = featureGroup.getBounds();
+  if (bounds.isValid()) {
+    mapInstance.flyToBounds(bounds, { padding: [40, 40], maxZoom: 18, duration: 0.6 });
+  }
+  matched[0].layer.openPopup();
+
+  if (status) {
+    const labels = matched.map(m => m.name).join(", ");
+    status.textContent = `Highlighted: ${labels}`;
+  }
 }
 
 function initMap() {
@@ -643,7 +713,9 @@ form.addEventListener("submit", async (event) => {
         usedLessonsMode: data.usedLessonsMode,
         searchQueries: data.searchQueries ?? []
       });
-      if (data.primaryLocation) dropPinFor(data.primaryLocation);
+      // Highlight buildings detected by BuildingRegistry on the server.
+      // Falls back to clearing the highlight when no specific building was named.
+      highlightBuildings(data.detectedBuildings || []);
       if (data.newLesson) {
         showToast(`Learned: ${data.newLesson.lessonText}`);
       }
@@ -661,6 +733,7 @@ form.addEventListener("submit", async (event) => {
 loadHealth();
 refreshLessons();
 initMap();
+initDragHandle();
 
 document.querySelectorAll("a.exampleQ").forEach(link => {
   link.addEventListener("click", (e) => {
@@ -672,3 +745,75 @@ document.querySelectorAll("a.exampleQ").forEach(link => {
     }
   });
 });
+
+// Drag handle between chat and lessons. Updates --lessons-width on the shell;
+// width is clamped 200px..50vw and persisted to localStorage.
+function initDragHandle() {
+  const handle = document.querySelector("#dragHandle");
+  const shell = document.querySelector(".shell");
+  if (!handle || !shell) return;
+
+  // Bumped to v2 because the chat-column behaviour changed; any stored value from v1 would
+  // make the chat too wide at default, which is the opposite of what we want.
+  const STORAGE_KEY = "gh.lessonsWidthPx.v2";
+  const MIN_PX = 200;
+  const maxPx = () => Math.round(window.innerWidth * 0.5);
+
+  // Restore persisted width on load (clamped to current viewport).
+  const saved = parseInt(localStorage.getItem(STORAGE_KEY) || "", 10);
+  if (Number.isFinite(saved)) {
+    const clamped = Math.max(MIN_PX, Math.min(saved, maxPx()));
+    shell.style.setProperty("--lessons-width", `${clamped}px`);
+  }
+
+  let dragging = false;
+
+  const onMove = (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    // Lessons panel sits at the right edge; new width = (window right) - mouseX.
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const w = Math.max(MIN_PX, Math.min(window.innerWidth - x, maxPx()));
+    shell.style.setProperty("--lessons-width", `${w}px`);
+  };
+
+  const stop = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("dragging-handle");
+    handle.classList.remove("dragging");
+    // Persist final width.
+    const value = getComputedStyle(shell).getPropertyValue("--lessons-width").trim();
+    const px = parseFloat(value);
+    if (Number.isFinite(px)) localStorage.setItem(STORAGE_KEY, String(Math.round(px)));
+    if (mapInstance) mapInstance.invalidateSize();
+  };
+
+  const start = (e) => {
+    dragging = true;
+    document.body.classList.add("dragging-handle");
+    handle.classList.add("dragging");
+    e.preventDefault();
+  };
+
+  handle.addEventListener("mousedown", start);
+  handle.addEventListener("touchstart", start, { passive: false });
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("touchmove", onMove, { passive: false });
+  document.addEventListener("mouseup", stop);
+  document.addEventListener("touchend", stop);
+
+  // Keyboard a11y: arrows nudge by 24px.
+  handle.addEventListener("keydown", (e) => {
+    const cur = parseFloat(getComputedStyle(shell).getPropertyValue("--lessons-width")) || 360;
+    let next = cur;
+    if (e.key === "ArrowLeft") next = cur + 24;        // grow lessons (chat shrinks)
+    else if (e.key === "ArrowRight") next = cur - 24;  // shrink lessons (chat grows)
+    else return;
+    e.preventDefault();
+    next = Math.max(MIN_PX, Math.min(next, maxPx()));
+    shell.style.setProperty("--lessons-width", `${next}px`);
+    localStorage.setItem(STORAGE_KEY, String(Math.round(next)));
+    if (mapInstance) mapInstance.invalidateSize();
+  });
+}
