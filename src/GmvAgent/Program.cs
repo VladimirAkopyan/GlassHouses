@@ -51,22 +51,34 @@ app.MapGet("/api/health", async (RetrievalService retrieval, AppSecrets secrets)
 // Serve original source documents so citations can hyperlink directly to the file.
 // Walks up from the running binary to find the Findings-gmv directory; matches on basename
 // only and uses Path.GetFileName to defuse any path-traversal attempts in the URL.
-app.MapGet("/api/source/{filename}", (string filename) =>
+app.MapGet("/api/source/{*filename}", (string filename) =>
 {
     var safe = Path.GetFileName(filename);
     if (string.IsNullOrWhiteSpace(safe)) return Results.BadRequest();
 
+    // Collect all Findings-gmv directories: the project-root one and the wwwroot copy.
+    var searchRoots = new List<string>();
     var dir = new DirectoryInfo(AppContext.BaseDirectory);
-    string? root = null;
     while (dir is not null)
     {
         var candidate = Path.Combine(dir.FullName, "Findings-gmv");
-        if (Directory.Exists(candidate)) { root = candidate; break; }
+        if (Directory.Exists(candidate)) searchRoots.Add(candidate);
+        var wwwCandidate = Path.Combine(dir.FullName, "wwwroot", "Findings-gmv");
+        if (Directory.Exists(wwwCandidate)) searchRoots.Add(wwwCandidate);
+        // Also check for newData/pdf at the workspace root level
+        var newDataCandidate = Path.Combine(dir.FullName, "newData", "pdf");
+        if (Directory.Exists(newDataCandidate)) searchRoots.Add(newDataCandidate);
         dir = dir.Parent;
     }
-    if (root is null) return Results.NotFound(new { error = "Findings-gmv directory not found on server." });
+    if (searchRoots.Count == 0) return Results.NotFound(new { error = "Findings-gmv directory not found on server." });
 
-    var found = Directory.EnumerateFiles(root, safe, SearchOption.AllDirectories).FirstOrDefault();
+    string? found = null;
+    foreach (var root in searchRoots)
+    {
+        found = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+            .FirstOrDefault(f => string.Equals(Path.GetFileName(f), safe, StringComparison.OrdinalIgnoreCase));
+        if (found is not null) break;
+    }
     if (found is null) return Results.NotFound(new { error = $"File not found: {safe}" });
 
     var ext = Path.GetExtension(found).ToLowerInvariant();
@@ -1012,7 +1024,7 @@ public sealed class ClaudeService
         Retrieved evidence:
         {context}
 
-        Answer the question using only the retrieved evidence. If the evidence is thin or contradictory, say so plainly.
+        Use the retrieved evidence to supplement your own knowledge. If the evidence is thin or contradictory, say so plainly.
         Cite sources inline using [source_id#chunk_index] after the sentence they support.
         """;
 

@@ -661,3 +661,14 @@ form.addEventListener("submit", async (event) => {
 loadHealth();
 refreshLessons();
 initMap();
+
+document.querySelectorAll("a.exampleQ").forEach(link => {
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    const textarea = document.getElementById("question");
+    if (textarea) {
+      textarea.value = link.textContent;
+      textarea.focus();
+    }
+  });
+});
