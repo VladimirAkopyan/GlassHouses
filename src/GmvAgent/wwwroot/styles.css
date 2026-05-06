@@ -478,6 +478,7 @@ button:disabled {
   background: var(--paper);
 }
 .leafletMap .leaflet-container { font-family: inherit; }
+.leafletMap .leaflet-tile-pane { filter: saturate(0.05) brightness(1.15) contrast(0.85); }
 .exampleQuestions {
   border: 1px solid var(--line);
   border-radius: 10px;

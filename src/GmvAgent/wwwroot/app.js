@@ -3,121 +3,74 @@ const GMV_CENTER = [51.4970, 0.0080];
 let mapInstance = null;
 const placedPins = []; // { name, marker }
 
-const REGISTER_BUILDINGS = [
-  { name: "Metcalfe Court", lat: 51.4950998, lng: 0.0130894 },
-  { name: "Da Vinci Lodge", lat: 51.49461, lng: 0.0137574 },
-  { name: "Alamaro Lodge", lat: 51.4949233, lng: 0.0142525 },
-  { name: "Faraday Lodge", lat: 51.4951213, lng: 0.0151703 },
-  { name: "Maurer Court", lat: 51.495706, lng: 0.01531 },
-  { name: "Holly Court", lat: 51.4943885, lng: 0.0119623 },
-  { name: "New Becquerel Court", lat: null, lng: null },
-  { name: "Becquerel Court", lat: 51.4937839, lng: 0.0133399 },
-  { name: "Newton Lodge", lat: 51.4943696, lng: 0.0135571 },
-  { name: "Farnsworth Court", lat: 51.4930433, lng: 0.0141591 },
-  { name: "Hugero Point", lat: 51.4942826, lng: 0.0180737 },
-  { name: "Swiftstone Tower", lat: 51.4939533, lng: 0.0189622 },
-  { name: "Barquentine Heights", lat: 51.4932499, lng: 0.0190743 },
-  { name: "Landmann Point", lat: 51.4926806, lng: 0.01901 },
-  { name: "Bayliss Heights", lat: 51.4921206, lng: 0.0188944 },
-  { name: "Des Barres Court", lat: 51.4935515, lng: 0.018725 },
-  { name: "Hankins House", lat: 51.4931884, lng: 0.0186593 },
-  { name: "Dodds House", lat: 51.4928421, lng: 0.0185893 },
-  { name: "Chichester Lodge", lat: 51.4924638, lng: 0.0185097 },
-  { name: "Kane Court", lat: 51.4920873, lng: 0.0184423 },
-  { name: "Juett Lodge", lat: 51.4917652, lng: 0.0183814 },
-  { name: "Coneybear Point", lat: 51.4914859, lng: 0.0184357 },
-  { name: "Bainbrigge Court", lat: 51.4940655, lng: 0.0176141 },
-  { name: "Golden Anchor House", lat: 51.4934523, lng: 0.0174992 },
-  { name: "Halpin Building", lat: 51.4938976, lng: 0.0181912 },
-  { name: "Skelton Lodge", lat: 51.4933096, lng: 0.0180268 },
-  { name: "Munyard House", lat: 51.493074, lng: 0.0174042 },
-  { name: "Merritt Heights", lat: 51.492591, lng: 0.017287 },
-  { name: "Riddle Court", lat: 51.4930362, lng: 0.0179935 },
-  { name: "Gosling Lodge", lat: 51.4925508, lng: 0.0179283 },
-  { name: "Fiske Villas", lat: 51.4922849, lng: 0.0165612 },
-  { name: "Liddiard House", lat: 51.491838, lng: 0.0164364 },
-  { name: "Nasmythe House", lat: null, lng: null },
-  { name: "Etherington Lodge", lat: 51.4917926, lng: 0.0171019 },
-  { name: "Cochrane Lodge", lat: 51.4921824, lng: 0.0177695 },
-  { name: "Shillibeer Court", lat: 51.4916742, lng: 0.0177226 },
-  { name: "Devine House", lat: 51.4924005, lng: 0.0149708 },
-  { name: "Galvin House", lat: 51.4922132, lng: 0.0159096 },
-  { name: "McGill House", lat: 51.4922365, lng: 0.0153659 },
-  { name: "Willis House", lat: null, lng: null }
-];
-
-function pseudoPoint(index) {
-  const angle = index * 0.73;
-  const radius = 0.00075 + index * 0.00008;
-  return {
-    lat: GMV_CENTER[0] + Math.sin(angle) * radius,
-    lng: GMV_CENTER[1] + Math.cos(angle) * radius
-  };
-}
-
 function addRegisterBuildingLayer() {
   if (!mapInstance) return;
 
-  const known = REGISTER_BUILDINGS.filter(b => Number.isFinite(b.lat) && Number.isFinite(b.lng));
-  const unknown = REGISTER_BUILDINGS.filter(b => !Number.isFinite(b.lat) || !Number.isFinite(b.lng));
-  const boundsPoints = [];
+  fetch("gmv_buildings.geojson")
+    .then(res => res.json())
+    .then(geojson => {
+      const pastels = [
+        { fill: "#a8d8ea", border: "#5b9bb4" },
+        { fill: "#f9c6c9", border: "#c27a7e" },
+        { fill: "#b5ead7", border: "#6dab93" },
+        { fill: "#e2c2f0", border: "#9a6fb5" },
+        { fill: "#fce4a8", border: "#c4a44e" },
+        { fill: "#f0b8a8", border: "#b87060" },
+        { fill: "#a8c8f0", border: "#5f82b8" },
+        { fill: "#c9e8b0", border: "#7fb068" },
+        { fill: "#f0d0e8", border: "#b87ea8" },
+        { fill: "#d0e0f0", border: "#7898b8" }
+      ];
+      let colorIdx = 0;
+      const geoLayer = L.geoJSON(geojson, {
+        style: (feature) => {
+          const p = pastels[colorIdx++ % pastels.length];
+          return {
+            color: p.border,
+            weight: 2,
+            fillColor: p.fill,
+            fillOpacity: 0.75
+          };
+        },
+        pointToLayer: (feature, latlng) => {
+          const p = pastels[colorIdx++ % pastels.length];
+          return L.circleMarker(latlng, {
+            radius: 7,
+            color: p.border,
+            weight: 2,
+            fillColor: p.fill,
+            fillOpacity: 0.85
+          });
+        },
+        onEachFeature: (feature, layer) => {
+          const name = feature.properties && feature.properties.name;
+          if (name) {
+            layer.bindTooltip(name, {
+              permanent: false,
+              direction: "top",
+              className: "buildingLabel"
+            });
+            layer.bindPopup(`<strong>${name}</strong>`);
+          }
+        }
+      }).addTo(mapInstance);
 
-  for (const b of known) {
-    const marker = L.circleMarker([b.lat, b.lng], {
-      radius: 5,
-      color: "#294f7c",
-      weight: 1.5,
-      fillColor: "#74a4d8",
-      fillOpacity: 0.82
-    }).addTo(mapInstance);
-    marker.bindTooltip(b.name, {
-      permanent: true,
-      direction: "top",
-      offset: [0, -6],
-      className: "buildingLabel"
+      mapInstance.fitBounds(geoLayer.getBounds(), { padding: [8, 8], maxZoom: 18 });
+
+      const status = document.querySelector("#mapStatus");
+      if (status) {
+        status.textContent = `Map loaded: ${geojson.features.length} buildings.`;
+      }
     });
-    marker.bindPopup(`<strong>${b.name}</strong><br><small>Register building</small>`);
-    boundsPoints.push([b.lat, b.lng]);
-  }
-
-  for (let i = 0; i < unknown.length; i++) {
-    const b = unknown[i];
-    const pt = pseudoPoint(i);
-    const marker = L.circleMarker([pt.lat, pt.lng], {
-      radius: 5,
-      color: "#7c5a29",
-      weight: 1.5,
-      fillColor: "#d8bb74",
-      fillOpacity: 0.82,
-      dashArray: "4 2"
-    }).addTo(mapInstance);
-    marker.bindTooltip(b.name, {
-      permanent: true,
-      direction: "top",
-      offset: [0, -6],
-      className: "buildingLabel buildingLabelUnknown"
-    });
-    marker.bindPopup(`<strong>${b.name}</strong><br><small>Approximate placeholder (exact geocode missing)</small>`);
-    boundsPoints.push([pt.lat, pt.lng]);
-  }
-
-  if (boundsPoints.length > 0) {
-    mapInstance.fitBounds(boundsPoints, { padding: [8, 8], maxZoom: 18 });
-  }
-
-  const status = document.querySelector("#mapStatus");
-  if (status) {
-    status.textContent = `Register map loaded: ${REGISTER_BUILDINGS.length} buildings.`;
-  }
 }
 
 function initMap() {
   const el = document.querySelector("#map");
   if (!el || typeof L === "undefined") return;
   mapInstance = L.map(el, { zoomControl: true, scrollWheelZoom: false }).setView(GMV_CENTER, 17);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  L.tileLayer("https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+    maxZoom: 20,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/">HOT</a>'
   }).addTo(mapInstance);
   addRegisterBuildingLayer();
 }

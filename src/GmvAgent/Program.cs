@@ -24,7 +24,16 @@ _ = app.Services.GetRequiredService<LessonsService>().EnsureLessonsVectorIndexAs
 _ = app.Services.GetRequiredService<LessonsService>().EnsureSeededLessonsAsync();
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+var staticFileOptions = new StaticFileOptions
+{
+    ContentTypeProvider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider(
+        new Dictionary<string, string>(
+            new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider().Mappings)
+        {
+            [".geojson"] = "application/geo+json"
+        })
+};
+app.UseStaticFiles(staticFileOptions);
 
 app.MapGet("/api/health", async (RetrievalService retrieval, AppSecrets secrets) =>
 {
