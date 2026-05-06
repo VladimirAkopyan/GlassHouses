@@ -502,6 +502,24 @@ button:disabled {
 }
 .pinHistory { opacity: 0.55; }
 
+.buildingLabel {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #1f3552;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0;
+  box-shadow: none;
+}
+
+.buildingLabel::before {
+  display: none;
+}
+
+.buildingLabelUnknown {
+  color: #5b3f1b;
+}
+
 .searchTrail {
   display: flex;
   flex-wrap: wrap;
