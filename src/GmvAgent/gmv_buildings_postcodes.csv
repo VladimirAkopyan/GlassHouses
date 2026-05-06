@@ -1,0 +1,41 @@
+Side,Number,Building,Street,Postcode
+West,1,Metcalfe Court,John Harrison Way,SE10 0EL
+West,2,Da Vinci Lodge,West Parkside,SE10 0BD
+West,3,Alamaro Lodge,Renaissance Walk,SE10 0QU
+West,4,Faraday Lodge,Renaissance Walk,SE10 0QL
+West,5,Maurer Court,John Harrison Way,SE10 0SR
+West,6,Holly Court,West Parkside,SE10 0BG
+West,7,New Becquerel Court,Child Lane,SE10 0QX
+West,8,Becquerel Court,West Parkside,SE10 0QQ
+West,9,Newton Lodge,West Parkside,SE10 0BA
+West,10,Farnsworth Court,West Parkside,SE10 0RG
+East,1,Hugero Point,Rennie Street,SE10 0GS
+East,2,Swiftstone Tower,Peartree Way,SE10 0GT
+East,3,Barquentine Heights,4 Peartree Way,SE10 0GU
+East,4,Landmann Point,6 Peartree Way,SE10 0GW
+East,5,Bayliss Heights,8 Peartree Way,SE10 0GX
+East,6,Des Barres Court,Peartree Way,SE10 0HX
+East,7,Hankins House,20 Peartree Way,SE10 0GZ
+East,8,Dodds House,18 Peartree Way,SE10 0HY
+East,9,Chichester Lodge,16 Peartree Way,SE10 0HZ
+East,10,Kane Court,14 Peartree Way,SE10 0JR
+East,11,Juett Lodge,12 Peartree Way,SE10 0JS
+East,12,Coneybear Point,10 Peartree Way,SE10 0JW
+East,13,Bainbrigge Court,15 Rennie Street,SE10 0XT
+East,14,Golden Anchor House,3 Latimer Square,SE10 0XR
+East,15,Halpin Building,5 Rennie Street,SE10 0XT
+East,16,Skelton Lodge,5 Billinghurst Way,SE10 0XP
+East,17,Munyard House,2 Latimer Square,SE10 0NP
+East,18,Merritt Heights,16 West Parkside,SE10 0PD
+East,19,Riddle Court,6 Billinghurst Way,SE10 0NS
+East,20,Gosling Lodge,8 West Parkside,SE10 0PD
+East,21,Fiske Villas,West Parkside,SE10 0PD
+East,22,Liddiard House,2 Trathen Square,SE10 0ZN
+East,23,Nasmyth House,17 West Parkside,SE10 0ZG
+East,24,Etherington Lodge,5 Trathen Square,SE10 0ZJ
+East,25,Cochrane Lodge,5 West Parkside,SE10 0ZD
+East,26,Shillibeer Court,4 Curran Street,SE10 0PJ
+East,27,Devine House,1 Southern Way,SE10 0AU
+East,28,Galvin House,Calvert Road,SE10 0DF
+East,29,McGill House,3 Needell Road,SE10 0WF
+East,30,Willis House,14 Rennie Street,SE10 0QP
