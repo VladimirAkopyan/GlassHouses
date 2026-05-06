@@ -27,6 +27,15 @@
           <p class="mapPanelCaption" id="mapStatus">Pins drop here as Claude answers questions about specific places.</p>
         </header>
         <div id="map" class="leafletMap" role="img" aria-label="OpenStreetMap of GMV with pins"></div>
+        <section class="exampleQuestions" aria-label="Example questions">
+          <h3>Example questions:</h3>
+          <ul>
+            <li>show me all the legal issues in the farnsworth court building</li>
+            <li>what is the leasehold structure of farnsworth court and tell me any potential issus with it</li>
+            <li>what buildings have potential fire saftey issues</li>
+            <li>I am looking to buy a flat in farnsworth court. Write me a risk report.</li>
+          </ul>
+        </section>
       </section>
     </section>
 
@@ -40,10 +49,6 @@
           <label class="lessonsToggle" title="When ON, the agent applies learned retrieval lessons.">
             <input type="checkbox" id="lessonsToggle" checked>
             <span>Lessons <strong id="lessonsToggleLabel">ON</strong></span>
-          </label>
-          <label class="complaintsToggle" title="When ON, the agent includes resident complaints from the housing system.">
-            <input type="checkbox" id="complaintsToggle" checked>
-            <span>User Complaints <strong id="complaintsToggleLabel">ON</strong></span>
           </label>
           <span id="healthDot" class="dot"></span>
         </div>

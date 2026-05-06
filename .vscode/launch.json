@@ -17,7 +17,8 @@
                 "uriFormat": "%s",
                 "action": "openExternally"
             },
-            "preLaunchTask": "build"
+            "preLaunchTask": "build",
+            "envFile": "${workspaceFolder}/src/GmvAgent/.env"
         }
 
     ]

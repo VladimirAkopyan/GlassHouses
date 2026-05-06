@@ -45,8 +45,6 @@ const retrievalMode = document.querySelector("#retrievalMode");
 const llmStatus = document.querySelector("#llmStatus");
 const lessonsToggle = document.querySelector("#lessonsToggle");
 const lessonsToggleLabel = document.querySelector("#lessonsToggleLabel");
-const complaintsToggle = document.querySelector("#complaintsToggle");
-const complaintsToggleLabel = document.querySelector("#complaintsToggleLabel");
 const lessonsList = document.querySelector("#lessonsList");
 const lessonsCount = document.querySelector("#lessonsCount");
 const learnBtn = document.querySelector("#learnBtn");
@@ -512,12 +510,6 @@ lessonsToggle.addEventListener("change", () => {
   lessonsToggle.parentElement.classList.toggle("off", !on);
 });
 
-complaintsToggle.addEventListener("change", () => {
-  const on = complaintsToggle.checked;
-  complaintsToggleLabel.textContent = on ? "ON" : "OFF";
-  complaintsToggle.parentElement.classList.toggle("off", !on);
-});
-
 learnBtn.addEventListener("click", async () => {
   learnBtn.disabled = true;
   learnBtn.textContent = "Learning…";
@@ -569,7 +561,7 @@ form.addEventListener("submit", async (event) => {
         question: text,
         limit: 8,
         useLessons: lessonsToggle.checked,
-        useComplaints: complaintsToggle.checked
+        useComplaints: false
       })
     });
 

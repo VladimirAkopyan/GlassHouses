@@ -351,19 +351,6 @@ button:disabled {
 .lessonsToggle strong { color: var(--teal); }
 .lessonsToggle.off strong { color: var(--brick); }
 
-.complaintsToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
-  color: var(--muted);
-  cursor: pointer;
-  user-select: none;
-}
-.complaintsToggle input { accent-color: #d9573d; }
-.complaintsToggle strong { color: var(--teal); }
-.complaintsToggle.off strong { color: var(--brick); }
-
 .message .answerFooter {
   margin-top: 10px;
   padding-top: 10px;
@@ -491,6 +478,25 @@ button:disabled {
   background: var(--paper);
 }
 .leafletMap .leaflet-container { font-family: inherit; }
+.exampleQuestions {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8f6f1;
+  padding: 12px 14px;
+}
+.exampleQuestions h3 {
+  margin: 0 0 8px;
+  font-size: 0.94rem;
+}
+.exampleQuestions ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+.exampleQuestions li {
+  margin: 6px 0;
+  line-height: 1.45;
+}
 .pinLatest {
   filter: drop-shadow(0 0 0 var(--teal)) saturate(1.2);
 }

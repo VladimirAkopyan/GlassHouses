@@ -20,7 +20,6 @@ Housing complaint chatbot using LangChain structured output, LangGraph, and Mong
 ## Quick start
 
 1. Install dependencies:
-
     ```powershell
     python -m pip install -r requirements.txt
     ```
